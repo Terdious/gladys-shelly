@@ -11,7 +11,12 @@
   "gladys_version": ">=4.83.0",
   "cover_image": "https://raw.githubusercontent.com/Terdious/gladys-shelly/master/cover.png",
   "transports": ["local", "cloud"],
-  "network_discovery": [{ "type": "mdns", "service": "_shelly._tcp" }],
+  "network_discovery": [
+    {
+      "type": "mdns",
+      "service": "_shelly._tcp"
+    }
+  ],
   "config_schema": [
     {
       "key": "section_local",
@@ -45,8 +50,7 @@
         "en": "Optional. Comma-separated IP addresses or hostnames of Shelly devices that mDNS does not find (different VLAN, mDNS disabled on the device, static setup). Example: 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local",
         "fr": "Optionnel. Adresses IP ou noms d'hôte, séparés par des virgules, des Shelly que le mDNS ne trouve pas (autre VLAN, mDNS désactivé sur l'appareil, configuration statique). Exemple : 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local"
       },
-      "required": false,
-      "placeholder": "10.5.0.171, 10.5.0.172"
+      "required": false
     },
     {
       "key": "device_username",
@@ -121,8 +125,7 @@
         "en": "The server your account is hosted on, shown next to the authorization key in the Shelly app. Example: shelly-53-eu.shelly.cloud",
         "fr": "Le serveur qui héberge votre compte, affiché à côté de la clé d'autorisation dans l'application Shelly. Exemple : shelly-53-eu.shelly.cloud"
       },
-      "required": false,
-      "placeholder": "shelly-53-eu.shelly.cloud"
+      "required": false
     },
     {
       "key": "cloud_auth_key",
@@ -163,10 +166,34 @@
       "required": false,
       "default": "30",
       "options": [
-        { "value": "10", "label": { "en": "10 seconds", "fr": "10 secondes" } },
-        { "value": "30", "label": { "en": "30 seconds", "fr": "30 secondes" } },
-        { "value": "60", "label": { "en": "1 minute", "fr": "1 minute" } },
-        { "value": "300", "label": { "en": "5 minutes", "fr": "5 minutes" } }
+        {
+          "value": "10",
+          "label": {
+            "en": "10 seconds",
+            "fr": "10 secondes"
+          }
+        },
+        {
+          "value": "30",
+          "label": {
+            "en": "30 seconds",
+            "fr": "30 secondes"
+          }
+        },
+        {
+          "value": "60",
+          "label": {
+            "en": "1 minute",
+            "fr": "1 minute"
+          }
+        },
+        {
+          "value": "300",
+          "label": {
+            "en": "5 minutes",
+            "fr": "5 minutes"
+          }
+        }
       ]
     }
   ]
