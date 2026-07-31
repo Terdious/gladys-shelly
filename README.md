@@ -69,15 +69,16 @@ is covered in the [user documentation](./docs/en.md).
 
 Every field is optional. A local-only install works with all of them empty.
 
-| Key                | Type      | What it is                                                     |
-| ------------------ | --------- | -------------------------------------------------------------- |
-| `manual_hosts`     | `string`  | Comma-separated IPs/hostnames for devices mDNS cannot see      |
-| `device_username`  | `string`  | Device username — always `admin` on Gen2+                      |
-| `device_password`  | `secret`  | Device password, when authentication is enabled on the devices |
-| `cloud_enabled`    | `boolean` | Turn on the Shelly Cloud fallback                              |
-| `cloud_server`     | `string`  | Account server, e.g. `shelly-53-eu.shelly.cloud`               |
-| `cloud_auth_key`   | `secret`  | Shelly Cloud authorization key                                 |
-| `refresh_interval` | `select`  | Poll cadence in seconds (10 / 30 / 60 / 300), default 30       |
+| Key                 | Type      | What it is                                                         |
+| ------------------- | --------- | ------------------------------------------------------------------ |
+| `manual_hosts`      | `string`  | Comma-separated IPs/hostnames for devices mDNS cannot see          |
+| `device_username`   | `string`  | Device username — always `admin` on Gen2+                          |
+| `device_password`   | `secret`  | Device password, when authentication is enabled on the devices     |
+| `cloud_enabled`     | `boolean` | Turn on the Shelly Cloud fallback                                  |
+| `cloud_server`      | `string`  | Account server, e.g. `shelly-53-eu.shelly.cloud`                   |
+| `cloud_auth_key`    | `secret`  | Shelly Cloud authorization key                                     |
+| `refresh_interval`  | `select`  | Poll cadence in seconds (10 / 30 / 60 / 300), default 30           |
+| `realtime_interval` | `select`  | Real-time lane cadence (1 / 5 / 10 / 30 s, or disabled), default 5 |
 
 The manifest declares `transports: ["local", "cloud"]`, so Gladys renders its
 own **"Prefer the local connection"** toggle and hands it to the integration as
@@ -99,6 +100,7 @@ src/
     localCircuit.js          per-device breaker: stop retrying a dead device every cycle
     wsRpc.js                 real-time RPC over WebSocket (in-payload digest auth)
     wsHub.js                 one push connection per device, declaratively synced
+    selector.js              derived, reconstructible device and feature selectors
     discovery.js             mDNS + manual + known hosts -> probed devices
     features.js              component -> feature specs (ONE table, both directions)
     deviceMapping.js         device model and status -> states
@@ -115,13 +117,20 @@ feature _and_ how to read its value from a status payload. Discovery and
 telemetry both consume it, which structurally prevents the classic drift where a
 feature is published but never fed.
 
+The second one is `src/shelly/selector.js`. Gladys selectors are unique across
+the whole installation, and derived from the display name when discovery omits
+them — so two devices each exposing an unnamed relay collide and the second is
+rejected. Selectors here are always explicit and always **derived** from the
+Shelly id plus the component key: unique by construction, and reproduced
+identically on every re-discovery so an update never creates a duplicate.
+
 ---
 
 ## Development
 
 ```bash
 npm install
-npm test            # node --test: 120 tests, no network needed
+npm test            # node --test: 131 tests, no network needed
 npm run lint
 npm run format:check
 ```
