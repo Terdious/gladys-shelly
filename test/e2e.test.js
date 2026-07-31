@@ -216,8 +216,13 @@ describe('configuration updates', () => {
   it('re-runs the discovery when the user adds an address', async () => {
     const discoveriesBefore = core.state.discovered.length;
 
+    // The bogus address is a CLOSED PORT on loopback, not an unroutable IP:
+    // it is refused instantly and identically everywhere. An address like
+    // 10.99.99.99 fails fast on a developer LAN but hangs until the full RPC
+    // timeout on a CI runner, which made this test pass locally and time out
+    // in CI — the assertion is about discovery, not about network behaviour.
     core.send(EXTERNAL_INTEGRATION.CONFIG_UPDATED, {
-      config: { ...coreConfig, manual_hosts: `${shelly.host}, 10.99.99.99` },
+      config: { ...coreConfig, manual_hosts: `${shelly.host}, 127.0.0.1:1` },
     });
 
     // Adding an address is the user saying "find this device": they should not
