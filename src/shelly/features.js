@@ -78,6 +78,9 @@ function switchSpecs(id) {
     },
     {
       key: `${prefix}:power`,
+      // Real-time lane: the value a control scene reacts to (battery steering,
+      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      realtime: true,
       name: 'Power',
       category: DEVICE_FEATURE_CATEGORIES.SWITCH,
       type: DEVICE_FEATURE_TYPES.SWITCH.POWER,
@@ -193,6 +196,9 @@ function emSpecs(id) {
     ...perPhase,
     {
       key: `${prefix}:total_active_power`,
+      // Real-time lane: the value a control scene reacts to (battery steering,
+      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      realtime: true,
       name: 'Total active power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
@@ -313,6 +319,9 @@ function em1Specs(id) {
   return [
     {
       key: `${prefix}:active_power`,
+      // Real-time lane: the value a control scene reacts to (battery steering,
+      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      realtime: true,
       name: 'Active power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
@@ -403,6 +412,9 @@ function pm1Specs(id) {
   return [
     {
       key: `${prefix}:active_power`,
+      // Real-time lane: the value a control scene reacts to (battery steering,
+      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      realtime: true,
       name: 'Active power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,

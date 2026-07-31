@@ -42,6 +42,24 @@ describe('browseMdns', () => {
     assert.deepEqual(await browseMdns(gladys), ['10.5.0.171', '10.5.0.180']);
   });
 
+  it('merges several browse rounds, because one snapshot comes back short', async () => {
+    // A device that was busy or unlucky with multicast collisions during the
+    // first browse answers the second. Losing it would look to the user like
+    // "my Shelly is not supported".
+    let round = 0;
+    const gladys = {
+      async scanNetwork() {
+        round += 1;
+        return round === 1
+          ? [{ name: 'a._shelly._tcp.local', addresses: ['10.5.0.171'] }]
+          : [{ name: 'b._shelly._tcp.local', addresses: ['10.5.0.172'] }];
+      },
+    };
+
+    assert.deepEqual(await browseMdns(gladys), ['10.5.0.171', '10.5.0.172']);
+    assert.equal(round, 2);
+  });
+
   it('degrades to an empty list when the core cannot scan', async () => {
     // A core without mediated discovery, or a 403 on an undeclared capture:
     // manual addresses must keep working, so this must not throw.

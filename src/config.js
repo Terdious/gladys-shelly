@@ -13,6 +13,11 @@ const MIN_REFRESH_SECONDS = 5;
 const MAX_REFRESH_SECONDS = 3600;
 const DEFAULT_REFRESH_SECONDS = 30;
 
+/** Real-time lane cadence bounds, in seconds. */
+const MIN_REALTIME_SECONDS = 1;
+const MAX_REALTIME_SECONDS = 60;
+const DEFAULT_REALTIME_SECONDS = 5;
+
 /** Gen2+ devices only accept this username; the form defaults to it. */
 const DEFAULT_DEVICE_USERNAME = 'admin';
 
@@ -63,6 +68,7 @@ export function normalizeConfig(rawConfig = {}) {
   const config = rawConfig || {};
 
   const refreshSeconds = Number.parseInt(config.refresh_interval, 10);
+  const realtimeSeconds = Number.parseInt(config.realtime_interval, 10);
 
   return {
     manualHosts: parseHosts(config.manual_hosts),
@@ -86,6 +92,14 @@ export function normalizeConfig(rawConfig = {}) {
     refreshSeconds: Number.isFinite(refreshSeconds)
       ? Math.min(Math.max(refreshSeconds, MIN_REFRESH_SECONDS), MAX_REFRESH_SECONDS)
       : DEFAULT_REFRESH_SECONDS,
+    // Cadence of the real-time lane: the handful of values a control scene
+    // reacts to (total power, per-relay power, on/off). 0 disables the lane,
+    // in which case those values simply ride the normal refresh interval.
+    realtimeSeconds: Number.isFinite(realtimeSeconds)
+      ? realtimeSeconds === 0
+        ? 0
+        : Math.min(Math.max(realtimeSeconds, MIN_REALTIME_SECONDS), MAX_REALTIME_SECONDS)
+      : DEFAULT_REALTIME_SECONDS,
     // Reserved key written by the core when the manifest declares both
     // transports. Read-only for us, and a wish rather than an order: we honour
     // it when we can and report the real outcome through publishTransports.

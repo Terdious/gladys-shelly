@@ -32,15 +32,23 @@ import { getShellyInfo, ShellyAuthError } from './rpc.js';
  * @param {number} [timeoutSeconds] scan duration
  * @returns {Promise<string[]>} the IP addresses announced by Shelly devices
  */
-export async function browseMdns(gladys, timeoutSeconds = 6) {
-  let records;
-  try {
-    records = await gladys.scanNetwork('mdns', { timeoutSeconds });
-  } catch (err) {
-    logger.warn(
-      `mDNS scan unavailable (${err.message}) — falling back to the configured addresses`,
-    );
-    return [];
+export async function browseMdns(gladys, { timeoutSeconds = 12, rounds = 2 } = {}) {
+  // Several rounds, merged. One browse is a snapshot: a device that was busy,
+  // asleep on its radio, or simply unlucky with multicast collisions answers
+  // the next one. On a fleet of a dozen Shelly devices a single short browse
+  // reliably comes back short — which looks exactly like "the device is not
+  // supported" to the user, and is the worst kind of silent failure.
+  const records = [];
+  for (let round = 0; round < rounds; round += 1) {
+    try {
+      const found = await gladys.scanNetwork('mdns', { timeoutSeconds });
+      records.push(...(found || []));
+    } catch (err) {
+      logger.warn(
+        `mDNS scan unavailable (${err.message}) — falling back to the configured addresses`,
+      );
+      return [];
+    }
   }
 
   const hosts = (records || [])

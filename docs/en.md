@@ -216,8 +216,13 @@ server is rejected.
 **On/off states are near-instant** (about a second): your devices push them to
 Gladys over a WebSocket, without waiting for the next refresh.
 
-**Measurements** (power, current, energy) follow the refresh interval you
-configured. That is deliberate, and it is a hard constraint rather than a
+**Control values** — a meter's total power, each relay's power — ride a
+dedicated **real-time lane**, published every 5 seconds by default (adjustable
+from 1 s to 30 s, or disabled). That is what a scene needs to react: steering a
+battery, shedding a load.
+
+**Every other measurement** (per-phase detail, voltages, currents, energy
+counters, temperatures) follows the refresh interval you configured. That is deliberate, and it is a hard constraint rather than a
 choice: Gladys limits an integration to **300 states per minute**, while a
 single Pro 3EM pushes about **one update per second across ~25 measurements**.
 Forwarding all of it verbatim would be roughly 900 states per minute — three
@@ -227,8 +232,16 @@ value at your configured cadence, without an HTTP round trip.
 The integration also only publishes values that **changed**; a stable value is
 republished every 30 minutes so it does not look dead.
 
-If you need faster measurements, lower the refresh interval — but keep the
-300/minute budget in mind past three or four energy meters.
+**Why the real-time lane stays narrow.** Gladys accepts **300 states per
+minute** per integration. At 5 seconds that is 12 windows per minute, so about
+**25 real-time measurements** for the whole integration. A single Pro 3EM
+carries ~16 instantaneous measurements: putting them all on the lane would be
+~576 states/minute with three devices, twice the cap. The lane is therefore
+limited to the values a scene actually reacts to.
+
+The integration watches that budget: as it approaches the cap it says so in the
+logs, naming the setting to raise, rather than letting states vanish with no
+explanation.
 
 ### Migrating from an existing MQTT / Node-RED setup
 

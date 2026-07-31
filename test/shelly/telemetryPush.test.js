@@ -84,7 +84,8 @@ describe('telemetry with the real-time push channel', () => {
       status: structuredClone(PRO_4PM_STATUS),
     });
     devices.push(device);
-    const { telemetry, published } = engineFor(device);
+    // 1 s real-time cadence so the test does not wait for the 5 s default.
+    const { telemetry, published } = engineFor(device, { realtime_interval: '1' });
 
     // One cycle opens the real-time connection for the created device.
     await telemetry.refreshValues();
@@ -101,32 +102,36 @@ describe('telemetry with the real-time push channel', () => {
     assert.equal(state.state, 1);
   });
 
-  it('does not flush a pushed measurement on the fast path', async () => {
+  it('puts control-relevant values on the real-time lane and leaves the rest behind', async () => {
     const device = await startFakeShelly({
       info: { id: 'shellypro4pm-a', mac: 'A', gen: 2 },
       status: structuredClone(PRO_4PM_STATUS),
     });
     devices.push(device);
-    const { telemetry, published } = engineFor(device);
+    const { telemetry, published } = engineFor(device, { realtime_interval: '1' });
 
     await telemetry.refreshValues();
     await waitFor(() => telemetry.wsHub.isLive('shellypro4pm-a'));
     published.length = 0;
 
-    // A Pro 3EM pushes this kind of frame about once a SECOND. Forwarding
-    // measurements at that rate would be ~900 states/minute against a
-    // 300/minute cap.
-    // switch:1 starts off and idle in the fixture, so BOTH values really move.
-    device.push({ 'switch:1': { id: 1, output: true, apower: 99.9 } });
+    // switch:1 starts off and idle in the fixture, so every value below moves.
+    device.push({
+      'switch:1': { id: 1, output: true, apower: 99.9, voltage: 240.5, aenergy: { total: 999 } },
+    });
     await waitFor(() =>
       published.find((s) => s.device_feature_external_id === featureId(device, 'switch:1:binary')),
     );
 
-    // The relay state went out; the power reading did not.
-    assert.equal(
-      published.some((s) => s.device_feature_external_id === featureId(device, 'switch:1:power')),
-      false,
-    );
+    const sent = (key) =>
+      published.some((s) => s.device_feature_external_id === featureId(device, key));
+
+    // The relay state and its power are what a control scene reacts to.
+    assert.equal(sent('switch:1:power'), true);
+    // Voltage and the energy counter are not: a Pro 3EM pushes about once a
+    // SECOND across ~25 measurements, and forwarding all of it would be
+    // ~900 states/minute against a 300/minute cap.
+    assert.equal(sent('switch:1:voltage'), false);
+    assert.equal(sent('switch:1:energy'), false);
   });
 
   it('serves a live device from its buffer instead of polling it over HTTP', async () => {

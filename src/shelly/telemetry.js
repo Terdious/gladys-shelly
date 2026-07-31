@@ -37,8 +37,22 @@ import { createWsHub } from './wsHub.js';
 /** Maximum number of states accepted by one POST /state (host API limit). */
 const STATE_BATCH_SIZE = 100;
 
-/** How long pushed controllable states are coalesced before being flushed, in ms. */
-const PUSH_FAST_FLUSH_MS = 1000;
+/**
+ * The host API rate-limits states at 300 per minute per integration. The
+ * real-time lane spends that budget deliberately, so it is kept to the handful
+ * of values a control scene actually reacts to — `realtime: true` in
+ * features.js (total active power, per-relay power) plus the controllable
+ * states. Everything else (per-phase detail, energy counters, temperatures)
+ * rides the normal refresh interval.
+ *
+ * Budget arithmetic, worth keeping in mind before widening the lane: at a 5 s
+ * cadence there are 12 windows per minute, so the whole integration can afford
+ * about 25 real-time features before it starts losing states to the limit.
+ */
+const STATE_RATE_LIMIT_PER_MINUTE = 300;
+
+/** Warn once per minute when the real-time lane gets close to the cap. */
+const RATE_WARNING_THRESHOLD = 0.8;
 
 /** How often a live (pushing) device is still polled, as a safety net, in ms. */
 const LIVE_SAFETY_NET_MS = 5 * 60 * 1000;
@@ -85,6 +99,9 @@ export function createTelemetry({
   const lastPolledAt = new Map();
   /** Freshest pushed value per device: Map<shellyId, Map<featureExternalId, {state, fast}>>. */
   const pushBuffer = new Map();
+  /** Timestamps of the states published in the last minute, for the budget guard. */
+  let publishTimestamps = [];
+  let lastRateWarningAt = 0;
 
   let timer = null;
   let fastFlushTimer = null;
@@ -149,15 +166,45 @@ export function createTelemetry({
       }
       buffered.set(externalIds.feature(spec.key), {
         state: value,
-        // Controllable features are the ones whose latency the user feels: a
-        // relay flipping on the wall must show up now, not at the next cycle.
-        fast: spec.read_only === false,
+        // Two kinds of value earn the real-time lane: the ones whose latency a
+        // human feels (a relay flipping on the wall) and the ones a control
+        // scene reacts to (total power steering a battery). Everything else
+        // would spend the rate-limit budget for nothing.
+        fast: spec.realtime === true || spec.read_only === false,
       });
     });
 
     if (buffered.size > 0) {
       pushBuffer.set(shellyId, buffered);
       scheduleFastFlush();
+    }
+  }
+
+  /**
+   * Track how much of the 300-states-per-minute budget is being spent, and warn
+   * when the real-time lane is about to cost the user actual dropped states.
+   * Silence here would be the worst outcome: states would start disappearing
+   * with nothing in the logs to explain why.
+   * @param {number} count states just published
+   * @param {number} timestamp current time
+   */
+  function recordPublishRate(count, timestamp) {
+    const windowStart = timestamp - 60000;
+    publishTimestamps = publishTimestamps.filter((at) => at > windowStart);
+    for (let index = 0; index < count; index += 1) {
+      publishTimestamps.push(timestamp);
+    }
+    if (
+      publishTimestamps.length >= STATE_RATE_LIMIT_PER_MINUTE * RATE_WARNING_THRESHOLD &&
+      timestamp - lastRateWarningAt >= 60000
+    ) {
+      lastRateWarningAt = timestamp;
+      const { realtimeSeconds } = getConfig();
+      logger.warn(
+        `${publishTimestamps.length} states published in the last minute, close to the ` +
+          `${STATE_RATE_LIMIT_PER_MINUTE}/min host API limit — raise the real-time interval ` +
+          `(currently ${realtimeSeconds}s) or the refresh interval, or create fewer devices`,
+      );
     }
   }
 
@@ -173,6 +220,7 @@ export function createTelemetry({
       try {
         await gladys.publishStates(batch);
         published += batch.length;
+        recordPublishRate(batch.length, timestamp);
         batch.forEach((state) => {
           lastPublished.set(state.device_feature_external_id, {
             value: state.state,
@@ -217,14 +265,19 @@ export function createTelemetry({
     logger.debug(`Real-time push: ${states.length} state(s) published`);
   }
 
-  /** Arm the short debounce that flushes controllable pushed states. */
+  /** Arm the debounce that flushes the real-time lane at the configured cadence. */
   function scheduleFastFlush() {
     if (fastFlushTimer) {
       return;
     }
+    const { realtimeSeconds } = getConfig();
+    if (!realtimeSeconds) {
+      // Lane disabled: those values ride the normal refresh cycle like the rest.
+      return;
+    }
     fastFlushTimer = setTimeout(() => {
       flushFast().catch((err) => logger.warn(`Real-time flush failed: ${err.message}`));
-    }, PUSH_FAST_FLUSH_MS);
+    }, realtimeSeconds * 1000);
     if (typeof fastFlushTimer.unref === 'function') {
       fastFlushTimer.unref();
     }

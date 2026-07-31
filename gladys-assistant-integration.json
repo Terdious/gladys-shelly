@@ -195,6 +195,57 @@
           }
         }
       ]
+    },
+    {
+      "key": "realtime_interval",
+      "type": "select",
+      "label": {
+        "en": "Real-time interval (power and on/off)",
+        "fr": "Intervalle temps réel (puissance et marche/arrêt)"
+      },
+      "description": {
+        "en": "How fast the values a scene reacts to are published: total power, per-relay power and on/off states. Everything else (per-phase detail, energy counters, temperatures) follows the refresh interval above. Gladys accepts 300 states per minute in total, so a short interval here is only sustainable because the lane is kept small — widen your device count and you may need to raise it.",
+        "fr": "Vitesse de publication des valeurs auxquelles une scène réagit : puissance totale, puissance par relais et états marche/arrêt. Tout le reste (détail par phase, compteurs d'énergie, températures) suit l'intervalle de rafraîchissement ci-dessus. Gladys accepte 300 états par minute au total, donc un intervalle court n'est tenable que parce que cette voie reste étroite — avec beaucoup d'appareils il faudra sans doute l'augmenter."
+      },
+      "required": false,
+      "default": "5",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "1 second",
+            "fr": "1 seconde"
+          }
+        },
+        {
+          "value": "5",
+          "label": {
+            "en": "5 seconds",
+            "fr": "5 secondes"
+          }
+        },
+        {
+          "value": "10",
+          "label": {
+            "en": "10 seconds",
+            "fr": "10 secondes"
+          }
+        },
+        {
+          "value": "30",
+          "label": {
+            "en": "30 seconds",
+            "fr": "30 secondes"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Disabled",
+            "fr": "Désactivé"
+          }
+        }
+      ]
     }
   ]
 }

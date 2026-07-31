@@ -227,8 +227,14 @@ Une clé valide sur le mauvais serveur est rejetée.
 appareils les poussent vers Gladys par WebSocket, sans attendre le prochain
 rafraîchissement.
 
-**Les mesures** (puissance, courant, énergie) suivent l'intervalle de
-rafraîchissement que vous avez configuré. C'est volontaire, et c'est une
+**Les valeurs de pilotage** — puissance totale d'un compteur, puissance de
+chaque relais — sont sur une **voie temps réel** dédiée, publiées toutes les
+5 secondes par défaut (réglable de 1 s à 30 s, ou désactivable). C'est ce qu'il
+faut pour qu'une scène réagisse : piloter une batterie, délester une charge.
+
+**Le reste des mesures** (détail par phase, tensions, courants, compteurs
+d'énergie, températures) suit l'intervalle de rafraîchissement que vous avez
+configuré. C'est volontaire, et c'est une
 contrainte dure plutôt qu'un choix : Gladys limite une intégration à **300
 états par minute**, alors qu'un seul Pro 3EM pousse environ **une mise à jour
 par seconde sur ~25 mesures**. Tout transmettre tel quel ferait ~900 états par
@@ -238,8 +244,16 @@ la valeur _la plus fraîche_ à votre cadence, sans aller-retour HTTP.
 L'intégration ne publie par ailleurs que les valeurs **qui ont changé** ; une
 valeur stable est republiée toutes les 30 minutes pour ne pas paraître morte.
 
-S'il vous faut des mesures plus rapides, baissez l'intervalle — en gardant le
-budget de 300/minute en tête au-delà de 3 ou 4 compteurs d'énergie.
+**Pourquoi la voie temps réel reste étroite.** Gladys accepte **300 états par
+minute** pour une intégration. À 5 secondes, ça fait 12 fenêtres par minute,
+donc environ **25 mesures temps réel** pour toute l'intégration. Un seul
+Pro 3EM porte ~16 mesures instantanées : tout y mettre ferait ~576 états/minute
+avec trois appareils, soit le double du plafond. La voie est donc limitée aux
+valeurs auxquelles une scène réagit réellement.
+
+L'intégration surveille ce budget : si elle s'approche du plafond, elle
+l'écrit dans les logs en nommant le réglage à augmenter, plutôt que de laisser
+des états disparaître sans explication.
 
 ### Migration depuis une intégration MQTT / Node-RED existante
 
