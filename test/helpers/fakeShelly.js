@@ -10,6 +10,8 @@
 import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 
+import { WebSocketServer } from 'ws';
+
 /**
  * SHA-256 hex digest helper, mirroring what a Shelly device computes.
  * @param {string} value string to hash
@@ -126,6 +128,63 @@ export async function startFakeShelly({
     });
   });
 
+  // --- Real-time RPC channel -------------------------------------------------
+  // The same RPC surface over a WebSocket at /rpc, plus the push direction the
+  // HTTP channel does not have. Auth here is the IN-PAYLOAD `auth` object with
+  // the constant HA2, NOT an HTTP header — reproducing that difference is the
+  // point of this fake.
+  const wsNonce = randomBytes(4).readUInt32BE(0);
+  const WS_HA2 = sha256('dummy_method:dummy_uri');
+  const sockets = new Set();
+  const wsCalls = [];
+
+  const wss = new WebSocketServer({ server, path: '/rpc' });
+  wss.on('connection', (ws) => {
+    sockets.add(ws);
+    ws.on('close', () => sockets.delete(ws));
+    ws.on('message', (raw) => {
+      const request = JSON.parse(raw.toString());
+
+      if (password) {
+        const expectedHa1 = sha256(`admin:${realm}:${password}`);
+        const auth = request.auth;
+        const expected = auth
+          ? sha256(`${expectedHa1}:${wsNonce}:${auth.nc}:${auth.cnonce}:auth:${WS_HA2}`)
+          : null;
+        if (!auth || auth.response !== expected) {
+          ws.send(
+            JSON.stringify({
+              id: request.id,
+              error: {
+                code: 401,
+                message: JSON.stringify({
+                  auth_type: 'digest',
+                  nonce: wsNonce,
+                  nc: 1,
+                  realm,
+                  algorithm: 'SHA-256',
+                }),
+              },
+            }),
+          );
+          return;
+        }
+      }
+
+      wsCalls.push(request);
+      if (request.method === 'Shelly.GetStatus') {
+        ws.send(JSON.stringify({ id: request.id, result: status }));
+      } else {
+        ws.send(
+          JSON.stringify({
+            id: request.id,
+            error: { code: 404, message: 'No handler for that method' },
+          }),
+        );
+      }
+    });
+  });
+
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
 
@@ -135,9 +194,37 @@ export async function startFakeShelly({
     info,
     status,
     config,
-    /** Every RPC request the device received, in order. */
+    /** Every RPC request the device received over HTTP, in order. */
     calls,
+    /** Every RPC request the device received over the WebSocket, in order. */
+    wsCalls,
+    /** Number of WebSocket clients currently connected. */
+    connectedClients: () => sockets.size,
+
+    /**
+     * Push a status document to every connected client, the way a real device
+     * does when something changes.
+     * @param {object} params partial status document, e.g. `{"switch:0": {...}}`
+     * @param {string} [method] NotifyStatus or NotifyFullStatus
+     */
+    push(params, method = 'NotifyStatus') {
+      const frame = JSON.stringify({
+        src: info.id,
+        dst: 'gladys',
+        method,
+        params: { ts: 1768813591.43, ...params },
+      });
+      sockets.forEach((ws) => ws.send(frame));
+    },
+
+    /** Drop every open WebSocket, to exercise the reconnection path. */
+    dropSockets() {
+      sockets.forEach((ws) => ws.terminate());
+      sockets.clear();
+    },
     async close() {
+      sockets.forEach((ws) => ws.terminate());
+      wss.close();
       await new Promise((resolve) => server.close(resolve));
     },
   };

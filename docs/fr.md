@@ -4,9 +4,11 @@ Cette intégration connecte vos appareils **Shelly** à Gladys Assistant : relai
 prises connectées et compteurs d'énergie.
 
 Elle parle **directement à vos appareils sur votre réseau local** (protocole RPC
-Gen2+), et peut basculer sur le **Shelly Cloud** quand un appareil n'est pas
-joignable localement. Aucun broker MQTT, aucun compte obligatoire : une
-installation 100 % locale fonctionne avec un formulaire **entièrement vide**.
+Gen2+) et les laisse **pousser leurs changements en temps réel** : un relais
+basculé au mur apparaît dans Gladys en une seconde environ. Elle peut basculer
+sur le **Shelly Cloud** quand un appareil n'est pas joignable localement. Aucun
+broker MQTT, aucun compte obligatoire : une installation 100 % locale
+fonctionne avec un formulaire **entièrement vide**.
 
 > **Générations supportées :** Gen2 et suivantes — Shelly **Plus**, **Pro**,
 > **Mini**, **Gen3**, **Gen4**. Les appareils **Gen1** (Shelly 1, 2.5, Plug S
@@ -221,13 +223,23 @@ Une clé valide sur le mauvais serveur est rejetée.
 
 ### Les valeurs ne se mettent pas à jour aussi vite que prévu
 
-L'intégration ne publie que les valeurs **qui ont changé**. Une valeur stable
-n'est republiée que toutes les 30 minutes. C'est volontaire : Gladys limite une
-intégration à 300 états par minute, et un seul Pro 3EM porte ~25 mesures.
+**Les états On/Off sont quasi instantanés** (une seconde environ) : vos
+appareils les poussent vers Gladys par WebSocket, sans attendre le prochain
+rafraîchissement.
 
-Si vous avez besoin de valeurs vraiment temps réel, c'est l'objet de l'évolution
-« notifications temps réel (WebSocket) » de la [roadmap](./ROADMAP.md) : les
-Shelly Gen2+ savent pousser leurs changements au lieu d'être interrogés.
+**Les mesures** (puissance, courant, énergie) suivent l'intervalle de
+rafraîchissement que vous avez configuré. C'est volontaire, et c'est une
+contrainte dure plutôt qu'un choix : Gladys limite une intégration à **300
+états par minute**, alors qu'un seul Pro 3EM pousse environ **une mise à jour
+par seconde sur ~25 mesures**. Tout transmettre tel quel ferait ~900 états par
+minute — trois fois le plafond. Les mesures sont donc regroupées : Gladys reçoit
+la valeur _la plus fraîche_ à votre cadence, sans aller-retour HTTP.
+
+L'intégration ne publie par ailleurs que les valeurs **qui ont changé** ; une
+valeur stable est republiée toutes les 30 minutes pour ne pas paraître morte.
+
+S'il vous faut des mesures plus rapides, baissez l'intervalle — en gardant le
+budget de 300/minute en tête au-delà de 3 ou 4 compteurs d'énergie.
 
 ### Migration depuis une intégration MQTT / Node-RED existante
 

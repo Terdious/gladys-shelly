@@ -4,9 +4,10 @@ This integration connects your **Shelly** devices to Gladys Assistant: relays,
 smart plugs and energy meters.
 
 It talks **directly to your devices on your local network** (the Gen2+ RPC
-protocol), and can fall back to the **Shelly Cloud** when a device cannot be
-reached locally. No MQTT broker, no mandatory account: a fully local setup works
-with an **entirely empty form**.
+protocol) and lets them **push their changes in real time**, so a relay flipped
+on the wall appears in Gladys in about a second. It can fall back to the
+**Shelly Cloud** when a device cannot be reached locally. No MQTT broker, no
+mandatory account: a fully local setup works with an **entirely empty form**.
 
 > **Supported generations:** Gen2 and later — Shelly **Plus**, **Pro**,
 > **Mini**, **Gen3**, **Gen4**. **Gen1** devices (Shelly 1, 2.5, Plug S
@@ -212,13 +213,22 @@ server is rejected.
 
 ### Values do not update as fast as expected
 
-The integration only publishes values that **changed**. A stable value is only
-republished every 30 minutes. This is deliberate: Gladys limits an integration
-to 300 states per minute, and a single Pro 3EM carries ~25 measurements.
+**On/off states are near-instant** (about a second): your devices push them to
+Gladys over a WebSocket, without waiting for the next refresh.
 
-If you need truly real-time values, that is the "real-time notifications
-(WebSocket)" item on the [roadmap](./ROADMAP.md): Gen2+ devices can push their
-changes instead of being polled.
+**Measurements** (power, current, energy) follow the refresh interval you
+configured. That is deliberate, and it is a hard constraint rather than a
+choice: Gladys limits an integration to **300 states per minute**, while a
+single Pro 3EM pushes about **one update per second across ~25 measurements**.
+Forwarding all of it verbatim would be roughly 900 states per minute — three
+times over the cap. So measurements are coalesced: Gladys gets the _freshest_
+value at your configured cadence, without an HTTP round trip.
+
+The integration also only publishes values that **changed**; a stable value is
+republished every 30 minutes so it does not look dead.
+
+If you need faster measurements, lower the refresh interval — but keep the
+300/minute budget in mind past three or four energy meters.
 
 ### Migrating from an existing MQTT / Node-RED setup
 
