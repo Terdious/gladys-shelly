@@ -11,13 +11,23 @@
 //     chunked.
 //
 // Real-time push (issue #2) is layered ON TOP of the poll loop rather than
-// replacing it, because a Pro 3EM pushes `NotifyStatus` about once a SECOND:
-// forwarding that verbatim would be ~900 states/minute against a 300/minute
-// cap. So pushed values are COALESCED per device:
-//   - controllable states (a relay flipping) flush within a second — that is
-//     the latency the user actually feels;
-//   - measurements ride the cadence the user configured, but are served from
-//     the freshest pushed value instead of an HTTP round trip.
+// replacing it, because a Pro 3EM pushes `NotifyStatus` about once a SECOND
+// across ~16 instantaneous measurements: forwarding that verbatim would be
+// ~900 states/minute against a 300/minute cap. So pushed values are COALESCED
+// per device and split into two lanes:
+//   - the REAL-TIME lane (`realtime: true` in features.js, plus the
+//     controllable states) flushes at the configured `realtime_interval`,
+//     5 s by default. It carries what a human feels (a relay flipping on the
+//     wall) and what a control scene reacts to (total active power steering a
+//     battery, per-relay power). It is deliberately NARROW: at 5 s there are
+//     12 windows per minute, so the whole integration can afford roughly 25
+//     real-time features before it starts losing states to the rate limit;
+//   - everything else (per-phase detail, voltages, currents, energy counters,
+//     temperatures) rides the normal refresh interval, but is served from the
+//     freshest pushed value instead of an HTTP round trip.
+// `recordPublishRate` watches that budget and warns before states start being
+// dropped, because silent loss would be indistinguishable from a bug.
+//
 // A live device is still polled occasionally as a safety net, so a missed
 // reconnection or a silently dropped socket cannot freeze its values forever.
 //
