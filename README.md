@@ -94,6 +94,7 @@ src/
     rpc.js                   Gen2+ JSON-RPC over HTTP + SHA-256 digest auth
     cloudClient.js           Shelly Cloud Control API client
     client.js                transport router: local first, cloud fallback, badges
+    localCircuit.js          per-device breaker: stop retrying a dead device every cycle
     discovery.js             mDNS + manual + known hosts -> probed devices
     features.js              component -> feature specs (ONE table, both directions)
     deviceMapping.js         device model and status -> states
@@ -116,7 +117,7 @@ feature is published but never fed.
 
 ```bash
 npm install
-npm test            # node --test: 87 tests, no network needed
+npm test            # node --test: 98 tests, no network needed
 npm run lint
 npm run format:check
 ```

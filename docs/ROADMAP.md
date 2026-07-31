@@ -29,9 +29,15 @@
 - **Telemetry** (`src/shelly/telemetry.js`): global refresh loop, state
   deduplication with a 30-minute keep-alive (the host API caps states at
   300/minute), 100-state batching, overlapping-cycle guard.
+- **Per-device local circuit breaker** (`src/shelly/localCircuit.js`, same
+  pattern as the Tuya integration): after 3 consecutive local failures a device
+  is parked for 5 minutes instead of burning a 5 s timeout and a WARN line on
+  every cycle. It is re-probed once per cooldown, un-parked on a credentials
+  fix, and a deliberate user command still bypasses the park when there is no
+  cloud to fall back on.
 - **Control**: `Switch.Set` over whichever transport works, optimistic
   feedback, and a **failed ack** when the command could not be delivered.
-- **87 tests** (`node --test`): a fake Shelly device (real HTTP server, real
+- **98 tests** (`node --test`): a fake Shelly device (real HTTP server, real
   digest handshake) and a fake Gladys core exercising the real SDK wiring.
 
 ## Open

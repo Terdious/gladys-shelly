@@ -18,11 +18,18 @@
 // is keyed by host so a DHCP lease change naturally builds a fresh client.
 // -----------------------------------------------------------------------------
 
-import { DEVICE_TRANSPORTS } from '@gladysassistant/integration-sdk';
+import { DEVICE_TRANSPORTS, logger } from '@gladysassistant/integration-sdk';
 
 import { isCloudConfigured } from '../config.js';
 import { TRANSPORT_MESSAGES } from './constants.js';
-import { createRpcClient, ShellyAuthError } from './rpc.js';
+import {
+  clearLocalCircuit,
+  isLocalInCooldown,
+  LOCAL_FAILURE_THRESHOLD,
+  recordLocalFailure,
+  recordLocalSuccess,
+} from './localCircuit.js';
+import { createRpcClient, ShellyAuthError, ShellyConnectionError } from './rpc.js';
 
 /**
  * Create the transport router.
@@ -30,11 +37,14 @@ import { createRpcClient, ShellyAuthError } from './rpc.js';
  * @param {() => object} options.getConfig accessor to the current normalized config
  * @param {object} options.cloud the Shelly Cloud client
  * @param {typeof fetch} [options.fetchImpl] fetch implementation (tests)
+ * @param {() => number} [options.now] clock (tests)
  * @returns {object} the router
  */
-export function createShellyClient({ getConfig, cloud, fetchImpl = fetch }) {
+export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = Date.now }) {
   /** @type {Map<string, {client: object, host: string, username: string, password: string}>} */
   const rpcClients = new Map();
+  /** Per-device local health, so an unreachable device is not retried every cycle. */
+  const circuit = new Map();
 
   /**
    * Get (or build) the RPC client of one device.
@@ -74,6 +84,55 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch }) {
   /** Forget the cached RPC clients (credentials changed, devices re-discovered). */
   function reset() {
     rpcClients.clear();
+    // A password fix or a re-discovered address makes every parked device
+    // worth probing again: keeping them parked would hide the repair for up to
+    // a full cooldown.
+    clearLocalCircuit(circuit);
+  }
+
+  /**
+   * Run one local RPC call through the circuit breaker.
+   *
+   * Returns a result object rather than throwing, because "local did not work"
+   * is a normal branch here (the cloud fallback follows), not an exception.
+   *
+   * @param {string} shellyId the Shelly device id
+   * @param {string} host IP address or hostname
+   * @param {(rpc: object) => Promise<unknown>} run the call to perform
+   * @param {object} [options] behaviour options
+   * @param {boolean} [options.bypassCooldown] probe even while parked
+   * @returns {Promise<{ok: boolean, result?: unknown, error?: Error}>} the outcome
+   */
+  async function tryLocal(shellyId, host, run, { bypassCooldown = false } = {}) {
+    const timestamp = now();
+    if (!bypassCooldown && isLocalInCooldown(circuit, shellyId, timestamp)) {
+      // Skipping the call is the whole point: it is what saves the per-cycle
+      // timeout on a device that is simply unplugged.
+      return {
+        ok: false,
+        error: new ShellyConnectionError(
+          `${shellyId}: locally unreachable, parked for a few minutes before the next probe`,
+        ),
+      };
+    }
+
+    try {
+      const result = await run(rpcFor(shellyId, host));
+      recordLocalSuccess(circuit, shellyId);
+      return { ok: true, result };
+    } catch (error) {
+      const { tripped, cooldownMs } = recordLocalFailure(circuit, shellyId, timestamp);
+      if (tripped) {
+        // Logged once, on the threshold crossing only — the point of the
+        // breaker is to stop the every-cycle WARN as much as the every-cycle
+        // timeout.
+        logger.warn(
+          `${shellyId} failed ${LOCAL_FAILURE_THRESHOLD} local calls in a row ` +
+            `(${error.message}) — pausing local probes for ${Math.round(cooldownMs / 60000)} min`,
+        );
+      }
+      return { ok: false, error };
+    }
   }
 
   /**
@@ -90,12 +149,11 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch }) {
 
     let localError;
     if (localFirst) {
-      try {
-        const status = await rpcFor(shellyId, host).call('Shelly.GetStatus');
-        return { status, transport: DEVICE_TRANSPORTS.LOCAL };
-      } catch (err) {
-        localError = err;
+      const attempt = await tryLocal(shellyId, host, (rpc) => rpc.call('Shelly.GetStatus'));
+      if (attempt.ok) {
+        return { status: attempt.result, transport: DEVICE_TRANSPORTS.LOCAL };
       }
+      localError = attempt.error;
     }
 
     if (cloudUsable) {
@@ -124,8 +182,11 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch }) {
 
     // Not preferring local but no cloud configured: local is all we have left.
     if (!localFirst && host) {
-      const status = await rpcFor(shellyId, host).call('Shelly.GetStatus');
-      return { status, transport: DEVICE_TRANSPORTS.LOCAL };
+      const attempt = await tryLocal(shellyId, host, (rpc) => rpc.call('Shelly.GetStatus'));
+      if (attempt.ok) {
+        return { status: attempt.result, transport: DEVICE_TRANSPORTS.LOCAL };
+      }
+      throw attempt.error;
     }
 
     throw localError || new Error(`${shellyId}: no usable transport (no known address, no cloud)`);
@@ -145,14 +206,19 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch }) {
     const cloudUsable = isCloudConfigured(config);
     const localFirst = config.preferLocal && Boolean(host);
 
+    // A command is a deliberate user action. When there is no cloud to fall
+    // back on, the local call is the ONLY path: pay the timeout rather than
+    // refusing a click because the poll loop parked the device.
+    const runSwitch = (rpc) => rpc.call('Switch.Set', { id: channel, on });
+    const bypassCooldown = !cloudUsable;
+
     let localError;
     if (localFirst) {
-      try {
-        await rpcFor(shellyId, host).call('Switch.Set', { id: channel, on });
+      const attempt = await tryLocal(shellyId, host, runSwitch, { bypassCooldown });
+      if (attempt.ok) {
         return DEVICE_TRANSPORTS.LOCAL;
-      } catch (err) {
-        localError = err;
       }
+      localError = attempt.error;
     }
 
     if (cloudUsable) {
@@ -165,8 +231,11 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch }) {
     }
 
     if (!localFirst && host) {
-      await rpcFor(shellyId, host).call('Switch.Set', { id: channel, on });
-      return DEVICE_TRANSPORTS.LOCAL;
+      const attempt = await tryLocal(shellyId, host, runSwitch, { bypassCooldown });
+      if (attempt.ok) {
+        return DEVICE_TRANSPORTS.LOCAL;
+      }
+      throw attempt.error;
     }
 
     throw localError || new Error(`${shellyId}: no usable transport to send the command`);
