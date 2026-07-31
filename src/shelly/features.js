@@ -19,6 +19,7 @@ import {
 } from '@gladysassistant/integration-sdk';
 
 import { COMPONENT, EM_PHASES } from './constants.js';
+import { buildFeatureSelector } from './selector.js';
 
 /**
  * Round a number to a fixed number of decimals, passing through anything that
@@ -588,12 +589,17 @@ export function buildFeatureSpecs(status) {
  * Turn a feature spec into the Gladys feature descriptor sent at discovery.
  * @param {object} spec a feature spec
  * @param {(featureKey: string) => string} featureExternalId external id factory
+ * @param {string} [deviceSelector] owning device selector, to scope the feature selector
  * @returns {object} the Gladys device feature
  */
-export function toGladysFeature(spec, featureExternalId) {
+export function toGladysFeature(spec, featureExternalId, deviceSelector) {
   return {
     name: spec.name,
     external_id: featureExternalId(spec.key),
+    // Explicit, derived selector. Left to the core it would come from the
+    // display name, and two devices with an unnamed relay would both claim
+    // `on-off-switch-0` — the second one rejected with a 409.
+    ...(deviceSelector ? { selector: buildFeatureSelector(deviceSelector, spec.key) } : {}),
     category: spec.category,
     type: spec.type,
     ...(spec.unit ? { unit: spec.unit } : {}),

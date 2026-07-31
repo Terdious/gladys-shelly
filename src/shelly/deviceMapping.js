@@ -16,6 +16,7 @@ import {
   PARAM_SHELLY_MODEL,
 } from './constants.js';
 import { buildFeatureSpecs, toGladysFeature } from './features.js';
+import { buildDeviceSelector } from './selector.js';
 
 /**
  * Friendly name of a device, in decreasing order of usefulness: the name the
@@ -87,16 +88,23 @@ export function buildDevice({ info, status, config, host, externalIds }) {
     channelsByFamily.set(family, known);
   });
 
+  const name = buildDeviceName({ info, config });
+  // Anchored on the Shelly id (which carries the MAC), so it is unique across
+  // the installation AND reproduced identically on every re-discovery.
+  const selector = buildDeviceSelector(name, info?.id);
+
   const features = specs.map((spec) => {
     const channelCount = channelsByFamily.get(spec.componentKey.split(':')[0])?.size || 1;
     return toGladysFeature(
       { ...spec, name: buildFeatureName(spec, config, channelCount) },
       externalIds.feature,
+      selector,
     );
   });
 
   return {
-    name: buildDeviceName({ info, config }),
+    name,
+    selector,
     external_id: externalIds.device,
     features,
     params: [
