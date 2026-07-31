@@ -243,6 +243,20 @@ The integration watches that budget: as it approaches the cap it says so in the
 logs, naming the setting to raise, rather than letting states vanish with no
 explanation.
 
+**Checking that real time is actually working.** Two distinct lines per device
+in the container logs:
+
+```
+shellypro4pm-ece334ea4d10: real-time WebSocket connected
+shellypro4pm-ece334ea4d10: real-time updates flowing
+```
+
+The first one means the connection is established **and the device answered
+us**; the second appears with the first notification received. If the first
+line never shows up, the device is refusing the connection (password? old Gen2
+firmware?): its values then simply follow the refresh interval, nothing is
+lost.
+
 ### Migrating from an existing MQTT / Node-RED setup
 
 This integration creates its **own** devices with its own external ids

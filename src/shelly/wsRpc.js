@@ -2,11 +2,20 @@
 // Gen2+ RPC over WebSocket — the real-time channel.
 //
 // A Shelly Gen2+ device exposes the SAME RPC surface at `ws://<ip>/rpc`, and
-// once a client is connected the device PUSHES what changes:
+// once a client has INTRODUCED ITSELF the device PUSHES what changes:
 //   - `NotifyStatus`     — a PARTIAL status document, exactly the shape
 //                          `Shelly.GetStatus` returns, restricted to what moved;
-//   - `NotifyFullStatus` — the complete document (sent on connect and on reboot);
+//   - `NotifyFullStatus` — the complete document (sent on reboot);
 //   - `NotifyEvent`      — discrete events (button pushes, energy periods).
+//
+// "Introduced itself" is not a figure of speech and is the second trap of this
+// file: a notification frame carries a `dst`, and the device fills it with the
+// `src` of a request it has already received ON THAT CONNECTION. A client that
+// opens the socket and waits gets a connection that is genuinely established
+// and completely silent — which looks exactly like "real-time does not work"
+// with nothing in the logs to say why. So the connection sends one
+// `Shelly.GetStatus` as a handshake, which also seeds the caller with a full
+// snapshot without waiting for the first change.
 //
 // That "same shape" is the whole point: `buildStates()` maps a partial document
 // unchanged, so this module is TRANSPORT ONLY — it never learns what a switch
@@ -26,6 +35,7 @@ import { logger } from '@gladysassistant/integration-sdk';
 import WebSocket from 'ws';
 
 import { DEFAULT_HTTP_PORT } from './constants.js';
+import { ShellyAuthError } from './rpc.js';
 
 /** Source name the device echoes back as `dst` on our responses. */
 const RPC_SRC = 'gladys';
@@ -140,6 +150,7 @@ export function createWsConnection({
   let requestId = 0;
   let challenge = null;
   let nonceCount = 0;
+  let pushSeen = false;
 
   /** @type {Map<number, {resolve: Function, reject: Function, frame: object, retried: boolean, timer: NodeJS.Timeout}>} */
   const pending = new Map();
@@ -190,6 +201,13 @@ export function createWsConnection({
     // Both carry the component-keyed shape the mapper already understands; the
     // `ts` key rides along and is ignored by the mapper.
     if (message.method === 'NotifyStatus' || message.method === 'NotifyFullStatus') {
+      if (!pushSeen) {
+        pushSeen = true;
+        // The line that distinguishes "the socket is up" from "the device is
+        // actually talking to us" — the two are NOT the same thing, and only
+        // the second one makes the real-time lane work.
+        logger.info(`${shellyId}: real-time updates flowing`);
+      }
       if (message.params) {
         onStatus(message.params);
       }
@@ -214,14 +232,16 @@ export function createWsConnection({
     if (newChallenge) {
       const { password } = getCredentials();
       if (!password) {
-        entry.reject(new Error(`${shellyId}: authentication required but no password configured`));
+        entry.reject(
+          new ShellyAuthError(`${shellyId}: authentication required but no password configured`),
+        );
         return;
       }
       if (entry.retried) {
         // We already replayed this request WITH the auth object and the device
         // still refuses: the password is wrong, not the handshake.
         challenge = null;
-        entry.reject(new Error(`${shellyId}: wrong device password`));
+        entry.reject(new ShellyAuthError(`${shellyId}: wrong device password`));
         return;
       }
       // A fresh nonce restarts the counter — replaying the old one is rejected
@@ -296,12 +316,50 @@ export function createWsConnection({
     socket = ws;
 
     ws.on('open', () => {
-      reconnectAttempts = 0;
-      // A brand-new connection means a brand-new nonce space.
+      // A brand-new connection means a brand-new nonce space, and a device
+      // that has forgotten who we are.
       challenge = null;
       nonceCount = 0;
-      logger.info(`${shellyId}: real-time WebSocket connected`);
-      onConnectionChange(true);
+      pushSeen = false;
+      logger.debug(`${shellyId}: real-time WebSocket open, introducing ourselves`);
+
+      // The handshake. It registers our `src` with the device — without it the
+      // device has no `dst` to address its notifications to and stays silent
+      // forever — and its result is a full status snapshot, so the caller gets
+      // fresh values immediately instead of waiting for the first change.
+      request('Shelly.GetStatus')
+        .then((status) => {
+          // Only NOW is the connection worth anything, which is why liveness
+          // is announced here and not on `open`: the caller uses it to STOP
+          // polling the device over HTTP, and doing that for a socket that is
+          // open and silent would simply freeze its values.
+          reconnectAttempts = 0;
+          logger.info(`${shellyId}: real-time WebSocket connected`);
+          onConnectionChange(true);
+          if (status) {
+            onStatus(status);
+          }
+        })
+        .catch((err) => {
+          if (err instanceof ShellyAuthError) {
+            // Reconnecting would loop on something only the user can fix. The
+            // device stays on the HTTP path, which reports the same problem
+            // through the transport badge.
+            logger.warn(
+              `${shellyId}: no real-time updates — ${err.message}. Set the device password in ` +
+                'the integration configuration.',
+            );
+            return;
+          }
+          // Anything else is transient: let the close handler reconnect, with
+          // a backoff that grows because `reconnectAttempts` was NOT reset.
+          logger.warn(`${shellyId}: real-time handshake failed (${err.message}) — reconnecting`);
+          try {
+            ws.close();
+          } catch {
+            // Already closing: the close handler still owns the reconnection.
+          }
+        });
     });
 
     ws.on('message', (raw) => {

@@ -255,6 +255,20 @@ L'intégration surveille ce budget : si elle s'approche du plafond, elle
 l'écrit dans les logs en nommant le réglage à augmenter, plutôt que de laisser
 des états disparaître sans explication.
 
+**Comment vérifier que le temps réel fonctionne vraiment.** Dans les logs du
+conteneur, deux lignes différentes par appareil :
+
+```
+shellypro4pm-ece334ea4d10: real-time WebSocket connected
+shellypro4pm-ece334ea4d10: real-time updates flowing
+```
+
+La première dit que la connexion est établie **et que l'appareil nous a
+répondu** ; la seconde apparaît à la première notification reçue. Si la
+première ligne n'apparaît pas, l'appareil refuse la connexion (mot de passe ?
+firmware Gen2 trop ancien ?) : les valeurs suivent alors simplement
+l'intervalle de rafraîchissement, rien n'est perdu.
+
 ### Migration depuis une intégration MQTT / Node-RED existante
 
 Cette intégration crée ses **propres** appareils avec ses propres identifiants

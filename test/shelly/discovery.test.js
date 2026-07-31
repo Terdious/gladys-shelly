@@ -3,7 +3,14 @@ import { after, describe, it } from 'node:test';
 
 import { normalizeConfig } from '../../src/config.js';
 import { createShellyClient } from '../../src/shelly/client.js';
-import { browseMdns, buildTargets, discoverDevices } from '../../src/shelly/discovery.js';
+import { SKIP_REASON } from '../../src/shelly/constants.js';
+import {
+  browseMdns,
+  buildTargets,
+  describeSkip,
+  discoverDevices,
+  probeHost,
+} from '../../src/shelly/discovery.js';
 import { PRO_4PM_STATUS, startFakeShelly } from '../helpers/fakeShelly.js';
 
 /** Minimal stand-in for the SDK surface discovery uses. */
@@ -198,6 +205,134 @@ describe('discoverDevices', () => {
     const found = await discoverDevices({ gladys: fakeGladys(), client, config });
 
     assert.equal(found.length, 1);
+  });
+
+  it('publishes what it has after each round instead of only at the end', async () => {
+    // A full scan runs two browse rounds and takes ~25 s: leaving the Discovery
+    // page empty for that whole time reads as "nothing found".
+    const first = await startFakeShelly({
+      info: { id: 'shellypro4pm-aaaa', mac: 'AAAA', model: 'SPSW-004PE16EU', gen: 2 },
+      status: structuredClone(PRO_4PM_STATUS),
+    });
+    const second = await startFakeShelly({
+      info: { id: 'shellyplusplugs-bbbb', mac: 'BBBB', model: 'SNPL-00112EU', gen: 2 },
+    });
+    devices.push(first, second);
+
+    // The second device only answers the second browse — the exact case the
+    // multi-round scan exists for.
+    let round = 0;
+    const gladys = {
+      ...fakeGladys(),
+      async scanNetwork() {
+        round += 1;
+        return round === 1
+          ? [{ name: 'a._shelly._tcp.local', addresses: [first.host] }]
+          : [{ name: 'b._shelly._tcp.local', addresses: [second.host] }];
+      },
+    };
+
+    const { client, config } = routerFor();
+    const progress = [];
+    const found = await discoverDevices({
+      gladys,
+      client,
+      config,
+      onProgress: (partial) => progress.push(partial.length),
+    });
+
+    assert.equal(found.length, 2);
+    // One device was already on screen before the second browse even started.
+    assert.deepEqual(progress, [1, 2]);
+  });
+
+  it('keeps scanning when publishing a partial result fails', async () => {
+    const shelly = await startFakeShelly();
+    devices.push(shelly);
+
+    const { client, config } = routerFor({ manual_hosts: shelly.host });
+    const found = await discoverDevices({
+      gladys: fakeGladys(),
+      client,
+      config,
+      onProgress: () => {
+        throw new Error('core busy');
+      },
+    });
+
+    // A hiccup on the progress channel must not cost the user the scan.
+    assert.equal(found.length, 1);
+  });
+});
+
+describe('probeHost outcomes', () => {
+  const devices = [];
+  after(async () => {
+    await Promise.all(devices.map((device) => device.close()));
+  });
+
+  /** A router wired to the real RPC stack, with no cloud configured. */
+  function routerFor(rawConfig = {}) {
+    const config = normalizeConfig(rawConfig);
+    return createShellyClient({
+      getConfig: () => config,
+      cloud: {
+        async getStatus() {
+          throw new Error('cloud not configured');
+        },
+      },
+    });
+  }
+
+  const gladys = {
+    externalIds: (type, platformId) => ({
+      device: `ext:shelly:${type}:${platformId}`,
+      feature: (key) => `ext:shelly:${type}:${platformId}:${key}`,
+    }),
+  };
+
+  it('says WHY an address produced no device, instead of just dropping it', async () => {
+    // "13 candidates, 10 devices" is a dead end for a user whose Shelly is
+    // missing. Every skipped address must carry a reason they can act on.
+    const outcome = await probeHost({ gladys, client: routerFor(), host: '127.0.0.1:1' });
+
+    assert.equal(outcome.device, undefined);
+    assert.equal(outcome.reason, SKIP_REASON.NO_ANSWER);
+    assert.equal(outcome.host, '127.0.0.1:1');
+    assert.match(describeSkip(outcome), /no answer/i);
+  });
+
+  it('names a Gen1 device as such', async () => {
+    const gen1 = await startFakeShelly({
+      info: { type: 'SHSW-25', mac: 'A4CF12345678', id: 'shellyswitch25-a4cf12345678' },
+    });
+    devices.push(gen1);
+
+    const outcome = await probeHost({ gladys, client: routerFor(), host: gen1.host });
+
+    assert.equal(outcome.reason, SKIP_REASON.GEN1);
+    assert.match(describeSkip(outcome), /Gen1 Shelly \(SHSW-25\)/);
+  });
+
+  it('names a password-protected device as such', async () => {
+    const locked = await startFakeShelly({ password: 'hunter2' });
+    devices.push(locked);
+
+    const outcome = await probeHost({ gladys, client: routerFor(), host: locked.host });
+
+    assert.equal(outcome.reason, SKIP_REASON.NEEDS_PASSWORD);
+    // The sentence has to name the fix, not just the symptom.
+    assert.match(describeSkip(outcome), /requires a password/i);
+  });
+
+  it('returns the device when the probe succeeds', async () => {
+    const shelly = await startFakeShelly();
+    devices.push(shelly);
+
+    const outcome = await probeHost({ gladys, client: routerFor(), host: shelly.host });
+
+    assert.equal(outcome.reason, undefined);
+    assert.equal(outcome.device.external_id, 'ext:shelly:device:shellyplusplugs-fcb467266e2c');
   });
 });
 

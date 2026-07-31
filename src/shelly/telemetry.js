@@ -442,12 +442,17 @@ export function createTelemetry({
       logger.debug(`Could not list the known devices before the scan: ${err.message}`);
     }
 
+    // A full scan runs two mDNS browse rounds and takes ~25 s. Publishing only
+    // at the end leaves the Discovery page empty for that whole time, which
+    // reads as "nothing found": publish after each round instead, so the list
+    // fills up as devices are identified.
     const devices = await discoverDevices({
       gladys,
       client,
       config,
       knownDevices,
       fetchImpl,
+      onProgress: (partial) => gladys.publishDiscoveredDevices(partial),
     });
     await gladys.publishDiscoveredDevices(devices);
     return devices;
@@ -474,8 +479,11 @@ export function createTelemetry({
   /** Start (or restart) the refresh loop at the configured cadence. */
   function start() {
     stop();
-    const { refreshSeconds } = getConfig();
-    logger.info(`Telemetry started — refreshing every ${refreshSeconds}s`);
+    const { refreshSeconds, realtimeSeconds } = getConfig();
+    logger.info(
+      `Telemetry started — refreshing every ${refreshSeconds}s, real-time lane ` +
+        (realtimeSeconds ? `every ${realtimeSeconds}s` : 'disabled'),
+    );
     // Run one cycle immediately so the user does not wait a full interval
     // after a restart or a configuration change.
     safeCycle();

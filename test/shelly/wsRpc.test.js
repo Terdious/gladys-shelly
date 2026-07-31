@@ -107,19 +107,42 @@ describe('createWsConnection against a fake device', () => {
     return { connection, received };
   }
 
+  it('introduces itself on connect, or the device never pushes anything', async () => {
+    // THE regression test of this file. A Shelly addresses a notification to
+    // the `src` of a request it has already seen on that connection: a client
+    // that opens the socket and waits gets a connection that is genuinely
+    // established and permanently silent. That failure is invisible — the log
+    // says "connected", the device says nothing, and real-time simply does not
+    // work.
+    const device = await startFakeShelly();
+    devices.push(device);
+    const { received } = connectTo(device);
+
+    await waitFor(() => device.wsCalls.length > 0);
+    assert.equal(device.wsCalls[0].method, 'Shelly.GetStatus');
+    assert.ok(device.wsCalls[0].src, 'the handshake must carry a src for the device to answer to');
+    await waitFor(() => device.notifiableClients() === 1);
+
+    // The handshake doubles as a seed: a full snapshot without waiting for the
+    // first change.
+    const seeded = await waitFor(() => received[0]);
+    assert.ok(seeded['switch:0']);
+  });
+
   it('connects and receives a pushed partial status', async () => {
     const device = await startFakeShelly();
     devices.push(device);
     const { received } = connectTo(device);
 
-    await waitFor(() => device.connectedClients() === 1);
+    await waitFor(() => device.notifiableClients() === 1);
     device.push({ 'switch:0': { id: 0, output: true, apower: 42.5 } });
 
-    const status = await waitFor(() => received[0]);
     // A PARTIAL document, exactly the shape Shelly.GetStatus returns — which
     // is what lets the existing mapper consume it unchanged.
+    const status = await waitFor(() =>
+      received.find((entry) => entry['switch:0']?.apower === 42.5),
+    );
     assert.equal(status['switch:0'].output, true);
-    assert.equal(status['switch:0'].apower, 42.5);
   });
 
   it('receives a full status push too', async () => {
@@ -127,11 +150,13 @@ describe('createWsConnection against a fake device', () => {
     devices.push(device);
     const { received } = connectTo(device);
 
-    await waitFor(() => device.connectedClients() === 1);
-    device.push({ 'switch:0': { id: 0, output: false } }, 'NotifyFullStatus');
+    await waitFor(() => device.notifiableClients() === 1);
+    device.push({ 'switch:0': { id: 0, output: true, apower: 3.25 } }, 'NotifyFullStatus');
 
-    const status = await waitFor(() => received[0]);
-    assert.equal(status['switch:0'].output, false);
+    const status = await waitFor(() =>
+      received.find((entry) => entry['switch:0']?.apower === 3.25),
+    );
+    assert.equal(status['switch:0'].output, true);
   });
 
   it('answers the in-payload digest challenge and completes the request', async () => {
@@ -139,12 +164,15 @@ describe('createWsConnection against a fake device', () => {
     devices.push(device);
     const { connection } = connectTo(device, { password: 'hunter2' });
 
-    await waitFor(() => device.connectedClients() === 1);
+    // The handshake already went through the 401 and the authenticated replay.
+    await waitFor(() => device.notifiableClients() === 1);
+    const before = device.wsCalls.length;
     const status = await connection.request('Shelly.GetStatus');
 
     assert.ok(status['switch:0']);
-    // The first attempt was refused, the replay carried the auth object.
-    assert.equal(device.wsCalls.length, 1);
+    // The challenge is cached from the handshake, so this one lands first try:
+    // exactly one accepted call, not a second 401 round trip.
+    assert.equal(device.wsCalls.length, before + 1);
   });
 
   it('rejects a wrong password instead of looping on the challenge', async () => {
@@ -175,10 +203,11 @@ describe('createWsConnection against a fake device', () => {
     await waitFor(() => device.connectedClients() === 0);
 
     // A device rebooting or a Wi-Fi drop must heal without anything else
-    // noticing — the backoff starts at 1 s.
-    await waitFor(() => device.connectedClients() === 1, { timeout: 6000 });
-    device.push({ 'switch:0': { id: 0, output: true } });
-    assert.ok(await waitFor(() => received[0]));
+    // noticing — the backoff starts at 1 s. The reconnection must redo the
+    // handshake too: the device forgot us when the socket died.
+    await waitFor(() => device.notifiableClients() === 1, { timeout: 6000 });
+    device.push({ 'switch:0': { id: 0, output: true, apower: 99.5 } });
+    assert.ok(await waitFor(() => received.find((entry) => entry['switch:0']?.apower === 99.5)));
   });
 
   it('stops reconnecting once closed', async () => {
@@ -222,9 +251,12 @@ describe('createWsHub', () => {
 
     hub.sync([{ shellyId: device.info.id, host: device.host }]);
     await waitFor(() => hub.isLive(device.info.id));
+    await waitFor(() => device.notifiableClients() === 1);
 
-    device.push({ 'switch:0': { id: 0, output: true } });
-    const [shellyId, status] = await waitFor(() => pushed[0]);
+    device.push({ 'switch:0': { id: 0, output: true, apower: 61.5 } });
+    const [shellyId, status] = await waitFor(() =>
+      pushed.find(([, entry]) => entry['switch:0']?.apower === 61.5),
+    );
     assert.equal(shellyId, device.info.id);
     assert.equal(status['switch:0'].output, true);
   });
@@ -255,6 +287,25 @@ describe('createWsHub', () => {
     assert.equal(hub.size(), 0);
     await new Promise((resolve) => setTimeout(resolve, 200));
     assert.equal(device.connectedClients(), 0);
+  });
+
+  it('is not live until the device has actually answered', async () => {
+    // Liveness is what tells telemetry to STOP polling over HTTP. Reporting it
+    // on the socket opening would freeze the values of any device whose
+    // handshake never completes.
+    const device = await startFakeShelly({ password: 'hunter2' });
+    devices.push(device);
+    const { hub } = hubFor();
+
+    hub.sync([{ shellyId: device.info.id, host: device.host }]);
+    await waitFor(() => device.connectedClients() === 1);
+
+    // No password configured: the handshake is refused, so the device keeps
+    // being polled over HTTP instead of looking live and silent.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(hub.isLive(device.info.id), false);
+    // ...and we do not churn the socket over a problem only the user can fix.
+    assert.equal(device.connectedClients(), 1);
   });
 
   it('skips a device with no known address', async () => {

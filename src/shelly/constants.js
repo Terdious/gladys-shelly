@@ -25,6 +25,30 @@ export const CLOUD_TIMEOUT_MS = 15000;
 /** Maximum number of devices polled concurrently (kind to small LANs and to the core). */
 export const POLL_CONCURRENCY = 4;
 
+/** Duration of ONE mDNS browse round, in seconds. */
+export const MDNS_ROUND_TIMEOUT_SECONDS = 12;
+
+/** Number of mDNS browse rounds merged into one scan — a single snapshot comes back short. */
+export const MDNS_ROUNDS = 2;
+
+/**
+ * Why a candidate address produced no device. Every value is surfaced at INFO
+ * level at the end of a scan: "my Shelly is missing" must be diagnosable from
+ * the integration log alone, without turning on debug logging.
+ */
+export const SKIP_REASON = {
+  /** Nothing answered `GET /shelly` — wrong address, device off, other VLAN. */
+  NO_ANSWER: 'no-answer',
+  /** Something answered, but it is not a Shelly (no `id` in the document). */
+  NOT_A_SHELLY: 'not-a-shelly',
+  /** A Gen1 Shelly: answers `/shelly`, but speaks a completely different API. */
+  GEN1: 'gen1',
+  /** A Gen2+ Shelly that refused `Shelly.GetStatus` without credentials. */
+  NEEDS_PASSWORD: 'needs-password',
+  /** A Gen2+ Shelly that failed `Shelly.GetStatus` for any other reason. */
+  NO_STATUS: 'no-status',
+};
+
 /**
  * Republish an unchanged value at least this often (ms), so a device that never
  * moves does not look dead on the Gladys charts. Between two keep-alives only

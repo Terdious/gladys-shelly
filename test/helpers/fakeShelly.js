@@ -136,12 +136,21 @@ export async function startFakeShelly({
   const wsNonce = randomBytes(4).readUInt32BE(0);
   const WS_HA2 = sha256('dummy_method:dummy_uri');
   const sockets = new Set();
+  // Sockets that have introduced themselves with a `src`. A real Shelly fills
+  // the `dst` of a notification with the `src` of a request it has already
+  // received on that connection, so a client that never speaks never gets
+  // pushed anything. Modelling that here is the point: a fake that pushes to
+  // anyone who connects would happily let a silent-in-production bug pass.
+  const notifyTargets = new Map();
   const wsCalls = [];
 
   const wss = new WebSocketServer({ server, path: '/rpc' });
   wss.on('connection', (ws) => {
     sockets.add(ws);
-    ws.on('close', () => sockets.delete(ws));
+    ws.on('close', () => {
+      sockets.delete(ws);
+      notifyTargets.delete(ws);
+    });
     ws.on('message', (raw) => {
       const request = JSON.parse(raw.toString());
 
@@ -172,6 +181,9 @@ export async function startFakeShelly({
       }
 
       wsCalls.push(request);
+      if (request.src) {
+        notifyTargets.set(ws, request.src);
+      }
       if (request.method === 'Shelly.GetStatus') {
         ws.send(JSON.stringify({ id: request.id, result: status }));
       } else {
@@ -200,27 +212,33 @@ export async function startFakeShelly({
     wsCalls,
     /** Number of WebSocket clients currently connected. */
     connectedClients: () => sockets.size,
+    /** Number of clients that introduced themselves and will receive notifications. */
+    notifiableClients: () => notifyTargets.size,
 
     /**
-     * Push a status document to every connected client, the way a real device
-     * does when something changes.
+     * Push a status document, the way a real device does when something
+     * changes — to the clients it knows how to address, and only those.
      * @param {object} params partial status document, e.g. `{"switch:0": {...}}`
      * @param {string} [method] NotifyStatus or NotifyFullStatus
      */
     push(params, method = 'NotifyStatus') {
-      const frame = JSON.stringify({
-        src: info.id,
-        dst: 'gladys',
-        method,
-        params: { ts: 1768813591.43, ...params },
+      notifyTargets.forEach((dst, ws) => {
+        ws.send(
+          JSON.stringify({
+            src: info.id,
+            dst,
+            method,
+            params: { ts: 1768813591.43, ...params },
+          }),
+        );
       });
-      sockets.forEach((ws) => ws.send(frame));
     },
 
     /** Drop every open WebSocket, to exercise the reconnection path. */
     dropSockets() {
       sockets.forEach((ws) => ws.terminate());
       sockets.clear();
+      notifyTargets.clear();
     },
     async close() {
       sockets.forEach((ws) => ws.terminate());
