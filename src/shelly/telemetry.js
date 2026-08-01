@@ -41,7 +41,7 @@ import { mapWithConcurrency } from './async.js';
 import { DEVICE_TYPE, POLL_CONCURRENCY, STATE_KEEP_ALIVE_MS } from './constants.js';
 import { buildStates } from './deviceMapping.js';
 import { buildFeatureSpecs } from './features.js';
-import { buildTargets, discoverDevices } from './discovery.js';
+import { buildTargets, discoverDevices, publishDiscovered } from './discovery.js';
 import { createMqttHub } from './mqttHub.js';
 import { createWsHub } from './wsHub.js';
 
@@ -118,6 +118,8 @@ export function createTelemetry({
   let timer = null;
   let fastFlushTimer = null;
   let running = false;
+  /** The discovery currently in flight, so two callers share one scan. */
+  let discoveryInFlight = null;
 
   const wsHub = createWsHub({
     getConfig,
@@ -448,6 +450,25 @@ export function createTelemetry({
    * @returns {Promise<object[]>} the discovered devices
    */
   async function syncDiscovery() {
+    // Two scans at once make the core reject the second mDNS browse with a
+    // `Conflict`, which the bench hit by saving the configuration while a manual
+    // scan was running. The second caller waits for the first instead: it wants
+    // the result, not its own browse.
+    if (discoveryInFlight) {
+      logger.info('A discovery is already running — waiting for it instead of starting a second');
+      return discoveryInFlight;
+    }
+    discoveryInFlight = runDiscovery().finally(() => {
+      discoveryInFlight = null;
+    });
+    return discoveryInFlight;
+  }
+
+  /**
+   * Run ONE discovery and publish the result.
+   * @returns {Promise<object[]>} the discovered devices
+   */
+  async function runDiscovery() {
     const config = getConfig();
     let knownDevices = [];
     try {
@@ -460,6 +481,11 @@ export function createTelemetry({
     // at the end leaves the Discovery page empty for that whole time, which
     // reads as "nothing found": publish after each round instead, so the list
     // fills up as devices are identified.
+    const createdExternalIds = new Set(
+      (knownDevices || []).map((device) => device.external_id).filter(Boolean),
+    );
+    const publish = (list) => publishDiscovered({ gladys, devices: list, createdExternalIds });
+
     const devices = await discoverDevices({
       gladys,
       client,
@@ -467,9 +493,9 @@ export function createTelemetry({
       knownDevices,
       fetchImpl,
       mqttHub,
-      onProgress: (partial) => gladys.publishDiscoveredDevices(partial),
+      onProgress: publish,
     });
-    await gladys.publishDiscoveredDevices(devices);
+    await publish(devices);
     return devices;
   }
 

@@ -537,3 +537,63 @@ export function buildTargets(devices) {
     }))
     .filter((target) => Boolean(target.shellyId));
 }
+
+/**
+ * Publish the discovered devices, shedding what does not fit rather than
+ * losing the whole scan.
+ *
+ * `publishDiscoveredDevices` replaces the previous list, so the payload cannot
+ * be split across requests — the last chunk would simply win. And the payload
+ * is genuinely large: a Shelly Pro 3EM carries 24 features, so a fleet of
+ * seventeen meters serializes to ~140 KB against a body limit around 100 KB. A
+ * real installation reported exactly that, and the entire scan was discarded
+ * with nothing usable on screen.
+ *
+ * So: publish everything, and if the core refuses the size, drop devices and
+ * retry — starting with the ones the user has ALREADY created, which are the
+ * least actionable on a Discovery page. Whatever is dropped is named in the
+ * log, because a silently truncated list looks exactly like "the integration
+ * did not find my device", which is the failure this whole module exists to
+ * stop.
+ *
+ * @param {object} params inputs
+ * @param {object} params.gladys the SDK instance
+ * @param {object[]} params.devices the devices to publish
+ * @param {Set<string>} [params.createdExternalIds] external ids the user already created
+ * @returns {Promise<number>} how many devices were actually published
+ */
+export async function publishDiscovered({ gladys, devices, createdExternalIds = new Set() }) {
+  // Least actionable last: an already-created device is shown for information
+  // (and to refresh its address), a brand-new one is what the user came for.
+  const ordered = [...devices].sort((a, b) => {
+    const aCreated = createdExternalIds.has(a.external_id) ? 1 : 0;
+    const bCreated = createdExternalIds.has(b.external_id) ? 1 : 0;
+    return aCreated - bCreated;
+  });
+
+  let candidates = ordered;
+  for (;;) {
+    try {
+      await gladys.publishDiscoveredDevices(candidates);
+      if (candidates.length < devices.length) {
+        const dropped = ordered.slice(candidates.length);
+        logger.warn(
+          `Discovery: the Gladys core refused the full list (too large), so ` +
+            `${candidates.length} of ${devices.length} device(s) were published. ` +
+            `Left out: ${dropped.map((device) => device.name).join(', ')}. ` +
+            `Create some of the devices shown, then scan again to see the rest.`,
+        );
+      }
+      return candidates.length;
+    } catch (err) {
+      const tooLarge = /too large|413/i.test(err.message || '');
+      if (!tooLarge || candidates.length <= 1) {
+        logger.warn(`Could not publish the discovery result: ${err.message}`);
+        return 0;
+      }
+      // Halve rather than step down one by one: each attempt costs a round trip
+      // with a ~100 KB body, and the list can be far over the limit.
+      candidates = candidates.slice(0, Math.max(1, Math.floor(candidates.length / 2)));
+    }
+  }
+}

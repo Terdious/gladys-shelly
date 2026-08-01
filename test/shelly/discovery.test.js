@@ -11,6 +11,7 @@ import {
   discoverDevices,
   forgetSeenHosts,
   probeHost,
+  publishDiscovered,
 } from '../../src/shelly/discovery.js';
 import {
   GEN1_3EM_INFO,
@@ -553,5 +554,92 @@ describe('cross-scan memory', () => {
 
     assert.equal(second.length, 1, 'a device seen once must survive a blind browse');
     assert.equal(second[0].external_id, first[0].external_id);
+  });
+});
+
+describe('publishing a discovery result that does not fit', () => {
+  /** A device roughly the weight of a real Pro 3EM entry. */
+  const deviceNamed = (name, externalId) => ({
+    name,
+    external_id: externalId,
+    selector: name.toLowerCase(),
+    features: [],
+    params: [],
+  });
+
+  it('sheds what does not fit instead of losing the whole scan', async () => {
+    // The bench case: seventeen meters serialize to ~140 KB against a body
+    // limit near 100 KB, and the ENTIRE scan was discarded — nothing on screen,
+    // one opaque warning in the log.
+    const accepted = [];
+    const gladys = {
+      async publishDiscoveredDevices(devices) {
+        if (devices.length > 2) {
+          const error = new Error('PayloadTooLargeError: request entity too large');
+          throw error;
+        }
+        accepted.push(devices);
+      },
+    };
+
+    const devices = [
+      deviceNamed('Pro3EM General', 'ext:a'),
+      deviceNamed('Pro3EM Piscine', 'ext:b'),
+      deviceNamed('Pro3EM Tesla', 'ext:c'),
+      deviceNamed('Pro3EM Camping', 'ext:d'),
+    ];
+    const published = await publishDiscovered({ gladys, devices });
+
+    assert.equal(published, 2);
+    assert.equal(accepted.at(-1).length, 2);
+  });
+
+  it('drops the devices the user already created first', async () => {
+    // An already-created device is shown for information; a brand-new one is
+    // what the user opened the Discovery page for.
+    let lastAccepted = null;
+    const gladys = {
+      async publishDiscoveredDevices(devices) {
+        if (devices.length > 2) {
+          throw new Error('request entity too large');
+        }
+        lastAccepted = devices;
+      },
+    };
+
+    const devices = [
+      deviceNamed('Already there', 'ext:created-1'),
+      deviceNamed('Brand new', 'ext:new-1'),
+      deviceNamed('Also created', 'ext:created-2'),
+      deviceNamed('Also new', 'ext:new-2'),
+    ];
+    await publishDiscovered({
+      gladys,
+      devices,
+      createdExternalIds: new Set(['ext:created-1', 'ext:created-2']),
+    });
+
+    assert.deepEqual(
+      lastAccepted.map((device) => device.external_id),
+      ['ext:new-1', 'ext:new-2'],
+    );
+  });
+
+  it('does not retry an error that is not about size', async () => {
+    let calls = 0;
+    const gladys = {
+      async publishDiscoveredDevices() {
+        calls += 1;
+        throw new Error('connection refused');
+      },
+    };
+
+    const published = await publishDiscovered({
+      gladys,
+      devices: [deviceNamed('A', 'ext:a'), deviceNamed('B', 'ext:b')],
+    });
+
+    assert.equal(published, 0);
+    assert.equal(calls, 1, 'a network error must not trigger the shedding loop');
   });
 });
