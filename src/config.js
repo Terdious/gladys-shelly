@@ -13,6 +13,11 @@ const MIN_REFRESH_SECONDS = 5;
 const MAX_REFRESH_SECONDS = 3600;
 const DEFAULT_REFRESH_SECONDS = 30;
 
+/** Real-time lane cadence bounds, in seconds. */
+const MIN_REALTIME_SECONDS = 1;
+const MAX_REALTIME_SECONDS = 60;
+const DEFAULT_REALTIME_SECONDS = 5;
+
 /** Gen2+ devices only accept this username; the form defaults to it. */
 const DEFAULT_DEVICE_USERNAME = 'admin';
 
@@ -63,6 +68,7 @@ export function normalizeConfig(rawConfig = {}) {
   const config = rawConfig || {};
 
   const refreshSeconds = Number.parseInt(config.refresh_interval, 10);
+  const realtimeSeconds = Number.parseInt(config.realtime_interval, 10);
 
   return {
     manualHosts: parseHosts(config.manual_hosts),
@@ -83,9 +89,33 @@ export function normalizeConfig(rawConfig = {}) {
             .replace(/\/+$/, '')
         : '',
     cloudAuthKey: typeof config.cloud_auth_key === 'string' ? config.cloud_auth_key.trim() : '',
+    // MQTT: a third transport, and on a large fleet the only reliable
+    // inventory — a device that publishes announces itself continuously, with
+    // no discovery window to miss.
+    mqttEnabled: toBoolean(config.mqtt_enabled, false),
+    // Accepts `10.5.0.50:1883`, `mqtt://10.5.0.50` or a bare host: users paste
+    // whatever the Shelly UI showed them.
+    mqttServer:
+      typeof config.mqtt_server === 'string'
+        ? config.mqtt_server
+            .trim()
+            .replace(/^mqtts?:\/\//i, '')
+            .replace(/\/+$/, '')
+        : '',
+    mqttUsername: typeof config.mqtt_username === 'string' ? config.mqtt_username.trim() : '',
+    // Never trim a password: a trailing space can be part of it.
+    mqttPassword: typeof config.mqtt_password === 'string' ? config.mqtt_password : '',
     refreshSeconds: Number.isFinite(refreshSeconds)
       ? Math.min(Math.max(refreshSeconds, MIN_REFRESH_SECONDS), MAX_REFRESH_SECONDS)
       : DEFAULT_REFRESH_SECONDS,
+    // Cadence of the real-time lane: the handful of values a control scene
+    // reacts to (total power, per-relay power, on/off). 0 disables the lane,
+    // in which case those values simply ride the normal refresh interval.
+    realtimeSeconds: Number.isFinite(realtimeSeconds)
+      ? realtimeSeconds === 0
+        ? 0
+        : Math.min(Math.max(realtimeSeconds, MIN_REALTIME_SECONDS), MAX_REALTIME_SECONDS)
+      : DEFAULT_REALTIME_SECONDS,
     // Reserved key written by the core when the manifest declares both
     // transports. Read-only for us, and a wish rather than an order: we honour
     // it when we can and report the real outcome through publishTransports.

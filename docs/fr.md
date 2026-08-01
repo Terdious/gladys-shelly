@@ -4,15 +4,26 @@ Cette intégration connecte vos appareils **Shelly** à Gladys Assistant : relai
 prises connectées et compteurs d'énergie.
 
 Elle parle **directement à vos appareils sur votre réseau local** (protocole RPC
-Gen2+), et peut basculer sur le **Shelly Cloud** quand un appareil n'est pas
-joignable localement. Aucun broker MQTT, aucun compte obligatoire : une
-installation 100 % locale fonctionne avec un formulaire **entièrement vide**.
+Gen2+) et les laisse **pousser leurs changements en temps réel** : un relais
+basculé au mur apparaît dans Gladys en une seconde environ. Elle peut basculer
+sur **MQTT** puis sur le **Shelly Cloud** quand un appareil n'est pas joignable
+localement. Rien n'est obligatoire : une installation 100 % locale fonctionne
+avec un formulaire **entièrement vide**.
 
 > **Générations supportées :** Gen2 et suivantes — Shelly **Plus**, **Pro**,
-> **Mini**, **Gen3**, **Gen4**. Les appareils **Gen1** (Shelly 1, 2.5, Plug S
-> « SHPLG-S », Dimmer 2…) utilisent une API totalement différente et ne sont
-> **pas encore** supportés ; ils sont détectés et ignorés proprement, avec un
-> message explicite dans les logs.
+> **Mini**, **Gen3**, **Gen4** — **ainsi que les Gen1** (Shelly 1, 1PM, 2.5,
+> Plug S « SHPLG-S », EM, 3EM…).
+>
+> Les Gen1 parlent une API totalement différente (REST au lieu de JSON-RPC,
+> authentification Basic au lieu de Digest), mais l'intégration les ramène au
+> **même modèle** : un Shelly 3EM Gen1 expose exactement les mêmes
+> fonctionnalités qu'un Pro 3EM Gen2, avec les mêmes noms. Vos tableaux de bord
+> et vos scènes ne font pas la différence.
+>
+> Une limite à connaître : en local, les Gen1 n'ont **pas de temps réel**. Leur
+> canal de push (CoIoT) est du multicast, qui n'atteint jamais un conteneur
+> Docker, donc leurs valeurs suivent l'intervalle de rafraîchissement. **En
+> MQTT, si**, comme les Gen2+.
 
 ---
 
@@ -71,10 +82,38 @@ réseau, coupure Wi-Fi temporaire).
 > Shelly. Traitez-la comme un mot de passe. Elle est stockée chiffrée par Gladys
 > et n'est jamais affichée en clair.
 
-Quand les deux canaux sont configurés, Gladys affiche un interrupteur standard
+Quand plusieurs canaux sont configurés, Gladys affiche un interrupteur standard
 **« Préférer la connexion locale »** (activé par défaut). C'est une préférence :
 l'intégration l'applique quand elle le peut, et affiche la réalité appareil par
 appareil grâce aux **badges de transport** (voir plus bas).
+
+### MQTT (recommandé au-delà de quelques appareils)
+
+À remplir si des appareils ne sont pas découverts, ou si vous voulez du temps
+réel sur des Gen1.
+
+**Sur chaque Shelly** : interface web de l'appareil → **Settings → MQTT** →
+
+| Réglage                                | Valeur                                                                 |
+| -------------------------------------- | ---------------------------------------------------------------------- |
+| **Enable**                             | coché                                                                  |
+| **Server**                             | l'adresse de votre broker, ex. `10.5.0.50:1883`                        |
+| **Username / Password**                | ceux de votre broker, si protégé                                       |
+| **Enable 'MQTT Control'**              | coché — c'est ce qui autorise Gladys à **piloter** l'appareil par MQTT |
+| **RPC status notifications over MQTT** | coché — c'est ce qui envoie les valeurs en temps réel                  |
+| **MQTT prefix**                        | laissez la valeur par défaut (l'identifiant de l'appareil)             |
+
+**Dans Gladys** : cochez **Activer MQTT** et saisissez la même adresse de
+broker, plus les identifiants si nécessaire.
+
+Le préfixe est libre, y compris avec des `/` : l'intégration ne s'y fie pas.
+Elle identifie chaque appareil par le champ `src` de ses messages, qui est
+l'identifiant matériel — renommer un préfixe ne casse donc rien.
+
+> 💡 **Les Gen1 aussi.** Ils publient dans un dialecte totalement différent
+> (`shellies/<id>/emeter/0/power`, une valeur par topic, sans JSON), que
+> l'intégration comprend également. Un 3EM Gen1 sur MQTT remonte donc en temps
+> réel, contrairement au même appareil en local.
 
 ### Avancé
 
@@ -96,17 +135,45 @@ au-delà de 3 ou 4 compteurs d'énergie, restez à 30 secondes ou plus.
 Allez dans l'onglet **Découverte** de l'intégration et cliquez sur
 **Rechercher**.
 
-Gladys interroge trois sources et les fusionne :
+Gladys interroge quatre sources et les fusionne :
 
-1. **mDNS** — vos Shelly s'annoncent sur le réseau (service `_shelly._tcp`). Le
-   cœur de Gladys écoute pour le compte de l'intégration : les conteneurs sont
-   sur un réseau bridge et ne reçoivent jamais le trafic multicast.
-2. **Les adresses que vous avez saisies** à l'étape 2.
-3. **Les adresses des appareils déjà créés** dans Gladys — un nouveau scan ne
-   perd jamais un appareil dont l'annonce mDNS a été ratée.
+1. **mDNS** — vos Shelly s'annoncent sur le réseau (services `_shelly._tcp` pour
+   les Gen2+, `_http._tcp` pour les Gen1). Le cœur de Gladys écoute pour le
+   compte de l'intégration : les conteneurs sont sur un réseau bridge et ne
+   reçoivent jamais le trafic multicast.
+2. **Votre broker MQTT**, si vous l'avez configuré — voir ci-dessous.
+3. **Les adresses que vous avez saisies** à l'étape 2.
+4. **Les adresses déjà vues**, qu'il s'agisse d'appareils créés dans Gladys ou
+   simplement aperçus lors d'un scan précédent. Une adresse ayant répondu une
+   fois est re-interrogée à chaque scan : un appareil trouvé une fois n'est
+   jamais reperdu.
 
 Chaque adresse est ensuite interrogée en **unicast** (qui, lui, traverse le
 réseau bridge). Cliquez sur **Créer** pour ajouter un appareil à Gladys.
+
+### ⚠️ Un appareil manque à l'appel ? Passez par MQTT
+
+**C'est le point le plus important de cette page si vous avez plus de quelques
+appareils.**
+
+Le mDNS fonctionne par courtes rafales multicast. Sur une installation d'une
+quinzaine de Shelly, un même scan remonte 19 annonces, le suivant 27, et
+certains appareils **ne sont jamais annoncés** — alors qu'ils fonctionnent
+parfaitement et répondent en HTTP dès qu'on connaît leur adresse. Ce n'est ni
+une question de signal, ni de réglage sur l'appareil.
+
+Trois recours, du plus efficace au plus manuel :
+
+1. **Configurez MQTT** (section suivante). Un appareil qui publie sur votre
+   broker s'annonce **en permanence** : il n'y a plus de fenêtre à manquer. Il
+   est découvert, il remonte en temps réel, et il reste pilotable même
+   injoignable sur le réseau local. C'est le seul inventaire fiable au-delà de
+   quelques appareils.
+2. **Activez le Shelly Cloud.** Il ne découvre pas les appareils, mais il permet
+   de piloter et de lire ceux que Gladys connaît déjà quand le local tombe.
+3. **Saisissez les adresses IP à la main** dans « Adresses d'appareils
+   supplémentaires ». Efficace et immédiat, mais à refaire si un bail DHCP
+   change — réservez une IP fixe sur votre routeur dans ce cas.
 
 ### Un Shelly = un appareil Gladys
 
@@ -145,7 +212,7 @@ Matériel validé par conception sur les payloads réels : **Shelly Pro 3EM**,
 **Shelly Pro 4PM**, **Shelly Plus Plug S**.
 
 > **Pas encore supportés :** volets roulants (`cover`), éclairages variables
-> (`light`), entrées (`input`), appareils Gen1. Voir la
+> (`light`), entrées (`input`). Voir la
 > [roadmap](./ROADMAP.md).
 
 ### Le courant de neutre
@@ -190,8 +257,8 @@ configuration et vos appareils sont conservés.
 
 1. **Vérifiez que l'appareil répond.** Depuis un navigateur sur le même réseau,
    ouvrez `http://<ip-du-shelly>/shelly`. Vous devez voir un JSON contenant
-   `"gen": 2` (ou 3, ou 4). Si vous ne voyez **pas** de champ `gen`, c'est un
-   appareil Gen1 : il n'est pas encore supporté.
+   `"gen": 2` (ou 3, ou 4). Si vous ne voyez **pas** de champ `gen` mais un
+   champ `"type"`, c'est un appareil Gen1 : il est supporté aussi, en polling.
 2. **Le mDNS ne traverse pas les VLAN ni certains points d'accès Wi-Fi.**
    Saisissez les adresses IP à la main dans **Adresses d'appareils
    supplémentaires**, puis sauvegardez : la découverte se relance
@@ -221,13 +288,51 @@ Une clé valide sur le mauvais serveur est rejetée.
 
 ### Les valeurs ne se mettent pas à jour aussi vite que prévu
 
-L'intégration ne publie que les valeurs **qui ont changé**. Une valeur stable
-n'est republiée que toutes les 30 minutes. C'est volontaire : Gladys limite une
-intégration à 300 états par minute, et un seul Pro 3EM porte ~25 mesures.
+**Les états On/Off sont quasi instantanés** (une seconde environ) : vos
+appareils les poussent vers Gladys par WebSocket, sans attendre le prochain
+rafraîchissement.
 
-Si vous avez besoin de valeurs vraiment temps réel, c'est l'objet de l'évolution
-« notifications temps réel (WebSocket) » de la [roadmap](./ROADMAP.md) : les
-Shelly Gen2+ savent pousser leurs changements au lieu d'être interrogés.
+**Les valeurs de pilotage** — puissance totale d'un compteur, puissance de
+chaque relais — sont sur une **voie temps réel** dédiée, publiées toutes les
+5 secondes par défaut (réglable de 1 s à 30 s, ou désactivable). C'est ce qu'il
+faut pour qu'une scène réagisse : piloter une batterie, délester une charge.
+
+**Le reste des mesures** (détail par phase, tensions, courants, compteurs
+d'énergie, températures) suit l'intervalle de rafraîchissement que vous avez
+configuré. C'est volontaire, et c'est une
+contrainte dure plutôt qu'un choix : Gladys limite une intégration à **300
+états par minute**, alors qu'un seul Pro 3EM pousse environ **une mise à jour
+par seconde sur ~25 mesures**. Tout transmettre tel quel ferait ~900 états par
+minute — trois fois le plafond. Les mesures sont donc regroupées : Gladys reçoit
+la valeur _la plus fraîche_ à votre cadence, sans aller-retour HTTP.
+
+L'intégration ne publie par ailleurs que les valeurs **qui ont changé** ; une
+valeur stable est republiée toutes les 30 minutes pour ne pas paraître morte.
+
+**Pourquoi la voie temps réel reste étroite.** Gladys accepte **300 états par
+minute** pour une intégration. À 5 secondes, ça fait 12 fenêtres par minute,
+donc environ **25 mesures temps réel** pour toute l'intégration. Un seul
+Pro 3EM porte ~16 mesures instantanées : tout y mettre ferait ~576 états/minute
+avec trois appareils, soit le double du plafond. La voie est donc limitée aux
+valeurs auxquelles une scène réagit réellement.
+
+L'intégration surveille ce budget : si elle s'approche du plafond, elle
+l'écrit dans les logs en nommant le réglage à augmenter, plutôt que de laisser
+des états disparaître sans explication.
+
+**Comment vérifier que le temps réel fonctionne vraiment.** Dans les logs du
+conteneur, deux lignes différentes par appareil :
+
+```
+shellypro4pm-ece334ea4d10: real-time WebSocket connected
+shellypro4pm-ece334ea4d10: real-time updates flowing
+```
+
+La première dit que la connexion est établie **et que l'appareil nous a
+répondu** ; la seconde apparaît à la première notification reçue. Si la
+première ligne n'apparaît pas, l'appareil refuse la connexion (mot de passe ?
+firmware Gen2 trop ancien ?) : les valeurs suivent alors simplement
+l'intervalle de rafraîchissement, rien n'est perdu.
 
 ### Migration depuis une intégration MQTT / Node-RED existante
 

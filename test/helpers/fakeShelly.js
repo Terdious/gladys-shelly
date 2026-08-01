@@ -10,6 +10,8 @@
 import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 
+import { WebSocketServer } from 'ws';
+
 /**
  * SHA-256 hex digest helper, mirroring what a Shelly device computes.
  * @param {string} value string to hash
@@ -53,10 +55,16 @@ export async function startFakeShelly({
   },
   config = { sys: { device: { name: null } } },
   password = null,
+  gen1Status = null,
+  gen1Settings = { name: null },
 } = {}) {
   const calls = [];
+  const gen1Calls = [];
   const nonce = randomBytes(8).toString('hex');
   const realm = info.id;
+  // A Gen1 device has no `gen` and no `id`: it identifies itself with
+  // `type` + `mac`, and serves REST instead of JSON-RPC.
+  const isGen1 = !info.gen && Boolean(info.type);
 
   const server = http.createServer((req, res) => {
     let body = '';
@@ -72,7 +80,49 @@ export async function startFakeShelly({
       };
 
       if (req.method === 'GET' && req.url === '/shelly') {
-        respond({ ...info, auth_en: Boolean(password) });
+        respond({
+          ...info,
+          auth_en: Boolean(password),
+          ...(isGen1 ? { auth: Boolean(password) } : {}),
+        });
+        return;
+      }
+
+      // --- Gen1: a plain REST surface, with HTTP BASIC auth ------------------
+      // Reproducing the auth difference matters as much as the routes: sending
+      // a digest header to a Gen1 device yields a 401 loop against a password
+      // that is perfectly correct.
+      if (isGen1) {
+        if (password) {
+          const expected = `Basic ${Buffer.from(`admin:${password}`, 'utf8').toString('base64')}`;
+          if ((req.headers.authorization || '') !== expected) {
+            respond({ error: 'unauthorized' }, 401);
+            return;
+          }
+        }
+        const [path, query] = req.url.split('?');
+        gen1Calls.push(req.url);
+        if (path === '/status') {
+          respond(gen1Status);
+          return;
+        }
+        if (path === '/settings') {
+          respond(gen1Settings);
+          return;
+        }
+        const relayMatch = path.match(/^\/relay\/(\d+)$/);
+        if (relayMatch) {
+          const relay = (gen1Status.relays || [])[Number(relayMatch[1])];
+          if (!relay) {
+            respond({ error: 'no such relay' }, 404);
+            return;
+          }
+          const was = relay.ison;
+          relay.ison = new URLSearchParams(query || '').get('turn') === 'on';
+          respond({ ison: relay.ison, was_on: was });
+          return;
+        }
+        respond({ error: 'not found' }, 404);
         return;
       }
 
@@ -126,6 +176,75 @@ export async function startFakeShelly({
     });
   });
 
+  // --- Real-time RPC channel -------------------------------------------------
+  // The same RPC surface over a WebSocket at /rpc, plus the push direction the
+  // HTTP channel does not have. Auth here is the IN-PAYLOAD `auth` object with
+  // the constant HA2, NOT an HTTP header — reproducing that difference is the
+  // point of this fake.
+  const wsNonce = randomBytes(4).readUInt32BE(0);
+  const WS_HA2 = sha256('dummy_method:dummy_uri');
+  const sockets = new Set();
+  // Sockets that have introduced themselves with a `src`. A real Shelly fills
+  // the `dst` of a notification with the `src` of a request it has already
+  // received on that connection, so a client that never speaks never gets
+  // pushed anything. Modelling that here is the point: a fake that pushes to
+  // anyone who connects would happily let a silent-in-production bug pass.
+  const notifyTargets = new Map();
+  const wsCalls = [];
+
+  const wss = new WebSocketServer({ server, path: '/rpc' });
+  wss.on('connection', (ws) => {
+    sockets.add(ws);
+    ws.on('close', () => {
+      sockets.delete(ws);
+      notifyTargets.delete(ws);
+    });
+    ws.on('message', (raw) => {
+      const request = JSON.parse(raw.toString());
+
+      if (password) {
+        const expectedHa1 = sha256(`admin:${realm}:${password}`);
+        const auth = request.auth;
+        const expected = auth
+          ? sha256(`${expectedHa1}:${wsNonce}:${auth.nc}:${auth.cnonce}:auth:${WS_HA2}`)
+          : null;
+        if (!auth || auth.response !== expected) {
+          ws.send(
+            JSON.stringify({
+              id: request.id,
+              error: {
+                code: 401,
+                message: JSON.stringify({
+                  auth_type: 'digest',
+                  nonce: wsNonce,
+                  nc: 1,
+                  realm,
+                  algorithm: 'SHA-256',
+                }),
+              },
+            }),
+          );
+          return;
+        }
+      }
+
+      wsCalls.push(request);
+      if (request.src) {
+        notifyTargets.set(ws, request.src);
+      }
+      if (request.method === 'Shelly.GetStatus') {
+        ws.send(JSON.stringify({ id: request.id, result: status }));
+      } else {
+        ws.send(
+          JSON.stringify({
+            id: request.id,
+            error: { code: 404, message: 'No handler for that method' },
+          }),
+        );
+      }
+    });
+  });
+
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
 
@@ -135,9 +254,47 @@ export async function startFakeShelly({
     info,
     status,
     config,
-    /** Every RPC request the device received, in order. */
+    /** Every RPC request the device received over HTTP, in order. */
     calls,
+    /** Every Gen1 REST URL the device received, in order. */
+    gen1Calls,
+    /** The mutable Gen1 `/status` document, so a test can move a value. */
+    gen1Status,
+    /** Every RPC request the device received over the WebSocket, in order. */
+    wsCalls,
+    /** Number of WebSocket clients currently connected. */
+    connectedClients: () => sockets.size,
+    /** Number of clients that introduced themselves and will receive notifications. */
+    notifiableClients: () => notifyTargets.size,
+
+    /**
+     * Push a status document, the way a real device does when something
+     * changes — to the clients it knows how to address, and only those.
+     * @param {object} params partial status document, e.g. `{"switch:0": {...}}`
+     * @param {string} [method] NotifyStatus or NotifyFullStatus
+     */
+    push(params, method = 'NotifyStatus') {
+      notifyTargets.forEach((dst, ws) => {
+        ws.send(
+          JSON.stringify({
+            src: info.id,
+            dst,
+            method,
+            params: { ts: 1768813591.43, ...params },
+          }),
+        );
+      });
+    },
+
+    /** Drop every open WebSocket, to exercise the reconnection path. */
+    dropSockets() {
+      sockets.forEach((ws) => ws.terminate());
+      sockets.clear();
+      notifyTargets.clear();
+    },
     async close() {
+      sockets.forEach((ws) => ws.terminate());
+      wss.close();
       await new Promise((resolve) => server.close(resolve));
     },
   };
@@ -225,4 +382,57 @@ export const PRO_4PM_STATUS = {
     temperature: { tC: 41.4 },
   },
   'temperature:100': { id: 100, tC: 41.2, tF: 106.2 },
+};
+
+/**
+ * A realistic Gen1 Shelly 3EM `/status` payload (`SHEM-3`).
+ *
+ * Flat and device-specific, which is the whole point: `relays[]` and
+ * `emeters[]` side by side, energy in watt-hours on `total`, and NO apparent
+ * power — the Gen2+ document has none of this shape in common.
+ */
+export const GEN1_3EM_STATUS = {
+  relays: [{ ison: false, has_timer: false, overpower: false }],
+  emeters: [
+    {
+      power: -8.4,
+      pf: 0.01,
+      current: 2.76,
+      voltage: 227.8,
+      is_valid: true,
+      total: 7915525.36,
+      total_returned: 329811.77,
+    },
+    {
+      power: 107.9,
+      pf: 0.2,
+      current: 2.342,
+      voltage: 227.5,
+      is_valid: true,
+      total: 6537028.17,
+      total_returned: 215225.07,
+    },
+    {
+      power: -1150.3,
+      pf: 0.9,
+      current: 5.578,
+      voltage: 228.4,
+      is_valid: true,
+      total: 7503374.27,
+      total_returned: 284224.17,
+    },
+  ],
+  total_power: -1050.756,
+  fs_mounted: true,
+  update: { status: 'idle', has_update: false },
+};
+
+/** The `/shelly` identity of a Gen1 Shelly 3EM — no `gen`, and no `id` either. */
+export const GEN1_3EM_INFO = {
+  type: 'SHEM-3',
+  mac: '483FDAC37E3F',
+  auth: false,
+  fw: '20230913-114244/v1.14.0-gcb84623',
+  discoverable: true,
+  num_meters: 3,
 };

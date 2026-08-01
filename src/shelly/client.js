@@ -29,6 +29,8 @@ import {
   recordLocalFailure,
   recordLocalSuccess,
 } from './localCircuit.js';
+import { normalizeGen1Status } from './gen1/normalize.js';
+import { getGen1Status, setGen1Relay } from './gen1/rest.js';
 import { createRpcClient, ShellyAuthError, ShellyConnectionError } from './rpc.js';
 
 /**
@@ -36,11 +38,18 @@ import { createRpcClient, ShellyAuthError, ShellyConnectionError } from './rpc.j
  * @param {object} options router options
  * @param {() => object} options.getConfig accessor to the current normalized config
  * @param {object} options.cloud the Shelly Cloud client
+ * @param {object} [options.mqttHub] the MQTT hub, tried between local and cloud
  * @param {typeof fetch} [options.fetchImpl] fetch implementation (tests)
  * @param {() => number} [options.now] clock (tests)
  * @returns {object} the router
  */
-export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = Date.now }) {
+export function createShellyClient({
+  getConfig,
+  cloud,
+  mqttHub,
+  fetchImpl = fetch,
+  now = Date.now,
+}) {
   /** @type {Map<string, {client: object, host: string, username: string, password: string}>} */
   const rpcClients = new Map();
   /** Per-device local health, so an unreachable device is not retried every cycle. */
@@ -91,6 +100,54 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = 
   }
 
   /**
+   * Read the status of one device over its LOCAL transport, whichever that is.
+   *
+   * The generation is the only thing that differs: Gen1 answers `GET /status`
+   * with a flat document and Basic auth, Gen2+ answers `Shelly.GetStatus` with
+   * a component-keyed one and digest. Normalizing here means every caller above
+   * — telemetry, the real-time lane, the badges — sees one shape.
+   *
+   * @param {string} shellyId the Shelly device id
+   * @param {string} host IP address or hostname
+   * @param {number} gen hardware generation
+   * @returns {Promise<object>} the component-keyed status
+   */
+  async function localGetStatus(shellyId, host, gen) {
+    if (gen === 1) {
+      const { deviceUsername, devicePassword } = getConfig();
+      const raw = await getGen1Status({
+        host,
+        username: deviceUsername,
+        password: devicePassword,
+        fetchImpl,
+      });
+      return normalizeGen1Status(raw);
+    }
+    return rpcFor(shellyId, host).call('Shelly.GetStatus');
+  }
+
+  /**
+   * Flip a relay over the LOCAL transport of its generation.
+   * @param {string} shellyId the Shelly device id
+   * @param {string} host IP address or hostname
+   * @param {number} gen hardware generation
+   * @param {number} channel relay channel index
+   * @param {boolean} on desired state
+   * @returns {Promise<unknown>} the device answer
+   */
+  async function localSetSwitch(shellyId, host, gen, channel, on) {
+    if (gen === 1) {
+      const { deviceUsername, devicePassword } = getConfig();
+      return setGen1Relay(
+        { host, username: deviceUsername, password: devicePassword, fetchImpl },
+        channel,
+        on,
+      );
+    }
+    return rpcFor(shellyId, host).call('Switch.Set', { id: channel, on });
+  }
+
+  /**
    * Run one local RPC call through the circuit breaker.
    *
    * Returns a result object rather than throwing, because "local did not work"
@@ -98,7 +155,7 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = 
    *
    * @param {string} shellyId the Shelly device id
    * @param {string} host IP address or hostname
-   * @param {(rpc: object) => Promise<unknown>} run the call to perform
+   * @param {() => Promise<unknown>} run the call to perform
    * @param {object} [options] behaviour options
    * @param {boolean} [options.bypassCooldown] probe even while parked
    * @returns {Promise<{ok: boolean, result?: unknown, error?: Error}>} the outcome
@@ -117,7 +174,7 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = 
     }
 
     try {
-      const result = await run(rpcFor(shellyId, host));
+      const result = await run();
       recordLocalSuccess(circuit, shellyId);
       return { ok: true, result };
     } catch (error) {
@@ -142,18 +199,36 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = 
    * @param {string} [target.host] last known IP address or hostname
    * @returns {Promise<{status: object, transport: string, degraded?: boolean, message?: object}>} status and transport
    */
-  async function getStatus({ shellyId, host }) {
+  async function getStatus({ shellyId, host, gen = 2 }) {
     const config = getConfig();
     const cloudUsable = isCloudConfigured(config);
     const localFirst = config.preferLocal && Boolean(host);
 
     let localError;
     if (localFirst) {
-      const attempt = await tryLocal(shellyId, host, (rpc) => rpc.call('Shelly.GetStatus'));
+      const attempt = await tryLocal(shellyId, host, () => localGetStatus(shellyId, host, gen));
       if (attempt.ok) {
         return { status: attempt.result, transport: DEVICE_TRANSPORTS.LOCAL };
       }
       localError = attempt.error;
+    }
+
+    // MQTT sits BETWEEN local and cloud, which is the order the user asked for
+    // and the order that makes sense: it is still their own broker on their own
+    // network, so it is neither as direct as local nor as remote as the cloud.
+    if (mqttHub && mqttHub.knows(shellyId)) {
+      try {
+        const status = await mqttHub.request(shellyId, 'Shelly.GetStatus');
+        if (status) {
+          return {
+            status,
+            transport: DEVICE_TRANSPORTS.LOCAL,
+            ...(localFirst ? { degraded: true, message: TRANSPORT_MESSAGES.MQTT_FALLBACK } : {}),
+          };
+        }
+      } catch (mqttError) {
+        logger.debug(`${shellyId}: MQTT read failed (${mqttError.message})`);
+      }
     }
 
     if (cloudUsable) {
@@ -182,7 +257,7 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = 
 
     // Not preferring local but no cloud configured: local is all we have left.
     if (!localFirst && host) {
-      const attempt = await tryLocal(shellyId, host, (rpc) => rpc.call('Shelly.GetStatus'));
+      const attempt = await tryLocal(shellyId, host, () => localGetStatus(shellyId, host, gen));
       if (attempt.ok) {
         return { status: attempt.result, transport: DEVICE_TRANSPORTS.LOCAL };
       }
@@ -201,7 +276,7 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = 
    * @param {boolean} on desired state
    * @returns {Promise<string>} the transport that carried the command
    */
-  async function setSwitch({ shellyId, host }, channel, on) {
+  async function setSwitch({ shellyId, host, gen = 2 }, channel, on) {
     const config = getConfig();
     const cloudUsable = isCloudConfigured(config);
     const localFirst = config.preferLocal && Boolean(host);
@@ -209,7 +284,7 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = 
     // A command is a deliberate user action. When there is no cloud to fall
     // back on, the local call is the ONLY path: pay the timeout rather than
     // refusing a click because the poll loop parked the device.
-    const runSwitch = (rpc) => rpc.call('Switch.Set', { id: channel, on });
+    const runSwitch = () => localSetSwitch(shellyId, host, gen, channel, on);
     const bypassCooldown = !cloudUsable;
 
     let localError;
@@ -219,6 +294,15 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = 
         return DEVICE_TRANSPORTS.LOCAL;
       }
       localError = attempt.error;
+    }
+
+    if (mqttHub && mqttHub.knows(shellyId)) {
+      try {
+        await mqttHub.request(shellyId, 'Switch.Set', { id: channel, on });
+        return DEVICE_TRANSPORTS.LOCAL;
+      } catch (mqttError) {
+        logger.debug(`${shellyId}: MQTT command failed (${mqttError.message})`);
+      }
     }
 
     if (cloudUsable) {

@@ -4,7 +4,7 @@
 > [#1](https://github.com/Terdious/gladys-shelly/issues/1). This file is the
 > technical companion: shipped scope, frozen conventions, and pointers.
 
-## Shipped — v0.1.0 (first slice, bench validation pending)
+## Shipped — v0.1.0 (bench validation pending)
 
 - **Repository brought up to the [Gladys integration template](https://github.com/GladysAssistant/integration-template-js)**:
   manifest, Dockerfile (multi-arch, read-only rootfs, non-root), CI (Prettier /
@@ -17,7 +17,7 @@
 - **Discovery** (`src/shelly/discovery.js`): core-mediated mDNS
   (`_shelly._tcp`, contract B.16) merged with hand-typed addresses and the
   addresses of the already-created devices, unicast probing with bounded
-  concurrency, deduplication on the hardware identity, explicit Gen1 skip.
+  concurrency, deduplication on the hardware identity, Gen1 and Gen2+ side by side.
 - **Capability-derived device model** (`src/shelly/features.js`): the feature
   set comes from the components the device actually reports, never from a model
   table — a Shelly released after this code still maps. Covers `switch`, `em`,
@@ -37,19 +37,35 @@
   cloud to fall back on.
 - **Control**: `Switch.Set` over whichever transport works, optimistic
   feedback, and a **failed ack** when the command could not be delivered.
-- **98 tests** (`node --test`): a fake Shelly device (real HTTP server, real
-  digest handshake) and a fake Gladys core exercising the real SDK wiring.
+
+## Shipped — real-time push (issue #2)
+
+- **Gen2+ RPC over WebSocket** (`src/shelly/wsRpc.js`): the device pushes
+  `NotifyStatus` / `NotifyFullStatus` instead of being polled. Handles the
+  WebSocket digest scheme, which differs from the HTTP one in two ways that
+  silently break naive implementations: the `auth` object lives INSIDE the JSON
+  request, and its HA2 is the constant `sha256("dummy_method:dummy_uri")`.
+  Reconnects for life with exponential backoff.
+- **Declarative connection hub** (`src/shelly/wsHub.js`): `sync(targets)` opens,
+  keeps or closes connections to match the devices that exist right now — the
+  same list the poll loop already builds, so there is no second inventory.
+- **Coalescing, because a Pro 3EM pushes about once a second.** Forwarding that
+  verbatim would be ~900 states/minute against a 300/minute cap. Controllable
+  states (a relay flipping) flush within a second — that is the latency a user
+  feels — while measurements ride the configured cadence but are served from
+  the freshest pushed value instead of an HTTP round trip.
+- **The poll loop stays**, as a safety net: a live device is still read every
+  5 minutes, because a socket can stay open and silent (device wedged, firmware
+  bug) and only a real read tells that apart from "nothing changed".
+
+- **120 tests** (`node --test`): a fake Shelly device (real HTTP server, real
+  HTTP _and_ WebSocket digest handshakes, real pushes and socket drops) and a
+  fake Gladys core exercising the real SDK wiring.
 
 ## Open
 
-Priority order — the top item is what makes this integration match a
-push-based MQTT/Node-RED setup.
+Priority order.
 
-- [#2](https://github.com/Terdious/gladys-shelly/issues/2) **Real-time updates
-  through the Gen2+ WebSocket** (`ws://<ip>/rpc`, `NotifyStatus` /
-  `NotifyEvent`). Today the integration polls; Shelly devices can push. This is
-  the single biggest quality jump and the last gap versus the Node-RED flows
-  this integration replaces.
 - [#3](https://github.com/Terdious/gladys-shelly/issues/3) **Roller shutters**
   (`cover:N`) — open / close / stop / position.
 - [#4](https://github.com/Terdious/gladys-shelly/issues/4) **Lights and

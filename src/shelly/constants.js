@@ -13,6 +13,21 @@ export const DEVICE_TYPE = 'device';
 /** mDNS service Shelly devices announce themselves on. */
 export const MDNS_SERVICE = '_shelly._tcp';
 
+/** The service part of `_shelly._tcp`, used to tell a Shelly record from another service. */
+export const MDNS_SERVICE_NAME = 'shelly';
+
+/**
+ * Generic service Gen1 devices announce on. They do NOT use `_shelly._tcp`, so
+ * a Gen1 fleet is invisible to a browse that only declares the Shelly service.
+ */
+export const MDNS_GEN1_SERVICE = '_http._tcp';
+
+/**
+ * `_http._tcp` is shared with every printer and NAS on the LAN, so a Gen1
+ * record is only recognizable by this name prefix (`shellyem3-483fdac37e3f`).
+ */
+export const GEN1_MDNS_NAME_PREFIX = 'shelly';
+
 /** Default HTTP port of a Shelly device. */
 export const DEFAULT_HTTP_PORT = 80;
 
@@ -24,6 +39,30 @@ export const CLOUD_TIMEOUT_MS = 15000;
 
 /** Maximum number of devices polled concurrently (kind to small LANs and to the core). */
 export const POLL_CONCURRENCY = 4;
+
+/** Duration of ONE mDNS browse round, in seconds. */
+export const MDNS_ROUND_TIMEOUT_SECONDS = 12;
+
+/** Number of mDNS browse rounds merged into one scan — a single snapshot comes back short. */
+export const MDNS_ROUNDS = 2;
+
+/**
+ * Why a candidate address produced no device. Every value is surfaced at INFO
+ * level at the end of a scan: "my Shelly is missing" must be diagnosable from
+ * the integration log alone, without turning on debug logging.
+ */
+export const SKIP_REASON = {
+  /** Nothing answered `GET /shelly` — wrong address, device off, other VLAN. */
+  NO_ANSWER: 'no-answer',
+  /** Something answered, but it is not a Shelly (no `id` in the document). */
+  NOT_A_SHELLY: 'not-a-shelly',
+  /** A Gen1 Shelly: answers `/shelly`, but speaks a completely different API. */
+  GEN1: 'gen1',
+  /** A Gen2+ Shelly that refused `Shelly.GetStatus` without credentials. */
+  NEEDS_PASSWORD: 'needs-password',
+  /** A Gen2+ Shelly that failed `Shelly.GetStatus` for any other reason. */
+  NO_STATUS: 'no-status',
+};
 
 /**
  * Republish an unchanged value at least this often (ms), so a device that never
@@ -128,6 +167,10 @@ export const TRANSPORT_MESSAGES = {
   CLOUD_FALLBACK: {
     en: 'Device unreachable on the local network, falling back to the Shelly Cloud.',
     fr: 'Appareil injoignable sur le réseau local, bascule sur le Shelly Cloud.',
+  },
+  MQTT_FALLBACK: {
+    en: 'Device unreachable on the local network, served through your MQTT broker.',
+    fr: 'Appareil injoignable sur le réseau local, servi via votre broker MQTT.',
   },
   AUTH_FAILED: {
     en: 'The device refused the password. Check it in the integration configuration.',

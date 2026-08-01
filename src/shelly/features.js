@@ -19,6 +19,7 @@ import {
 } from '@gladysassistant/integration-sdk';
 
 import { COMPONENT, EM_PHASES } from './constants.js';
+import { buildFeatureSelector } from './selector.js';
 
 /**
  * Round a number to a fixed number of decimals, passing through anything that
@@ -78,6 +79,9 @@ function switchSpecs(id) {
     },
     {
       key: `${prefix}:power`,
+      // Real-time lane: the value a control scene reacts to (battery steering,
+      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      realtime: true,
       name: 'Power',
       category: DEVICE_FEATURE_CATEGORIES.SWITCH,
       type: DEVICE_FEATURE_TYPES.SWITCH.POWER,
@@ -193,6 +197,9 @@ function emSpecs(id) {
     ...perPhase,
     {
       key: `${prefix}:total_active_power`,
+      // Real-time lane: the value a control scene reacts to (battery steering,
+      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      realtime: true,
       name: 'Total active power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
@@ -313,6 +320,9 @@ function em1Specs(id) {
   return [
     {
       key: `${prefix}:active_power`,
+      // Real-time lane: the value a control scene reacts to (battery steering,
+      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      realtime: true,
       name: 'Active power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
@@ -403,6 +413,9 @@ function pm1Specs(id) {
   return [
     {
       key: `${prefix}:active_power`,
+      // Real-time lane: the value a control scene reacts to (battery steering,
+      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      realtime: true,
       name: 'Active power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
@@ -576,12 +589,17 @@ export function buildFeatureSpecs(status) {
  * Turn a feature spec into the Gladys feature descriptor sent at discovery.
  * @param {object} spec a feature spec
  * @param {(featureKey: string) => string} featureExternalId external id factory
+ * @param {string} [deviceSelector] owning device selector, to scope the feature selector
  * @returns {object} the Gladys device feature
  */
-export function toGladysFeature(spec, featureExternalId) {
+export function toGladysFeature(spec, featureExternalId, deviceSelector) {
   return {
     name: spec.name,
     external_id: featureExternalId(spec.key),
+    // Explicit, derived selector. Left to the core it would come from the
+    // display name, and two devices with an unnamed relay would both claim
+    // `on-off-switch-0` — the second one rejected with a 409.
+    ...(deviceSelector ? { selector: buildFeatureSelector(deviceSelector, spec.key) } : {}),
     category: spec.category,
     type: spec.type,
     ...(spec.unit ? { unit: spec.unit } : {}),

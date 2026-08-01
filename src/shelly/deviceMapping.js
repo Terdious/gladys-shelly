@@ -16,6 +16,7 @@ import {
   PARAM_SHELLY_MODEL,
 } from './constants.js';
 import { buildFeatureSpecs, toGladysFeature } from './features.js';
+import { buildDeviceSelector } from './selector.js';
 
 /**
  * Friendly name of a device, in decreasing order of usefulness: the name the
@@ -87,16 +88,23 @@ export function buildDevice({ info, status, config, host, externalIds }) {
     channelsByFamily.set(family, known);
   });
 
+  const name = buildDeviceName({ info, config });
+  // Anchored on the Shelly id (which carries the MAC), so it is unique across
+  // the installation AND reproduced identically on every re-discovery.
+  const selector = buildDeviceSelector(name, info?.id);
+
   const features = specs.map((spec) => {
     const channelCount = channelsByFamily.get(spec.componentKey.split(':')[0])?.size || 1;
     return toGladysFeature(
       { ...spec, name: buildFeatureName(spec, config, channelCount) },
       externalIds.feature,
+      selector,
     );
   });
 
   return {
-    name: buildDeviceName({ info, config }),
+    name,
+    selector,
     external_id: externalIds.device,
     features,
     params: [
@@ -160,4 +168,21 @@ export function readShellyId(device) {
  */
 export function readHost(device) {
   return device?.params?.find((param) => param.name === PARAM_IP_ADDRESS)?.value || undefined;
+}
+
+/**
+ * Read the hardware generation of a device created in Gladys.
+ *
+ * This is what routes a device to the right transport: Gen1 speaks REST with
+ * Basic auth and has no WebSocket, Gen2+ speaks JSON-RPC with digest. Devices
+ * created before the param existed are Gen2+ by construction — Gen1 was not
+ * supported then — so that is the safe default.
+ *
+ * @param {object} device a Gladys device
+ * @returns {number} the generation
+ */
+export function readGeneration(device) {
+  const raw = device?.params?.find((param) => param.name === PARAM_SHELLY_GEN)?.value;
+  const generation = Number.parseInt(raw, 10);
+  return Number.isFinite(generation) && generation > 0 ? generation : 2;
 }

@@ -11,7 +11,16 @@
   "gladys_version": ">=4.83.0",
   "cover_image": "https://raw.githubusercontent.com/Terdious/gladys-shelly/master/cover.png",
   "transports": ["local", "cloud"],
-  "network_discovery": [{ "type": "mdns", "service": "_shelly._tcp" }],
+  "network_discovery": [
+    {
+      "type": "mdns",
+      "service": "_shelly._tcp"
+    },
+    {
+      "type": "mdns",
+      "service": "_http._tcp"
+    }
+  ],
   "config_schema": [
     {
       "key": "section_local",
@@ -45,8 +54,11 @@
         "en": "Optional. Comma-separated IP addresses or hostnames of Shelly devices that mDNS does not find (different VLAN, mDNS disabled on the device, static setup). Example: 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local",
         "fr": "Optionnel. Adresses IP ou noms d'hôte, séparés par des virgules, des Shelly que le mDNS ne trouve pas (autre VLAN, mDNS désactivé sur l'appareil, configuration statique). Exemple : 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local"
       },
-      "required": false,
-      "placeholder": "10.5.0.171, 10.5.0.172"
+      "placeholder": {
+        "en": "10.5.0.171, 10.5.0.172",
+        "fr": "10.5.0.171, 10.5.0.172"
+      },
+      "required": false
     },
     {
       "key": "device_username",
@@ -121,8 +133,11 @@
         "en": "The server your account is hosted on, shown next to the authorization key in the Shelly app. Example: shelly-53-eu.shelly.cloud",
         "fr": "Le serveur qui héberge votre compte, affiché à côté de la clé d'autorisation dans l'application Shelly. Exemple : shelly-53-eu.shelly.cloud"
       },
-      "required": false,
-      "placeholder": "shelly-53-eu.shelly.cloud"
+      "placeholder": {
+        "en": "shelly-53-eu.shelly.cloud",
+        "fr": "shelly-53-eu.shelly.cloud"
+      },
+      "required": false
     },
     {
       "key": "cloud_auth_key",
@@ -134,6 +149,84 @@
       "description": {
         "en": "The authorization cloud key of your Shelly account. It grants full control over every device of the account — treat it like a password.",
         "fr": "La clé d'autorisation cloud de votre compte Shelly. Elle donne le contrôle total sur tous les appareils du compte — traitez-la comme un mot de passe."
+      },
+      "required": false
+    },
+    {
+      "key": "section_mqtt",
+      "type": "section",
+      "label": {
+        "en": "MQTT (recommended for large installations)",
+        "fr": "MQTT (recommandé pour les grandes installations)"
+      },
+      "description": {
+        "en": "Optional, and the most reliable way to reach a large fleet. Shelly devices announce themselves over mDNS in short multicast bursts that are easily missed, so on an installation with many devices some are simply never discovered. A device configured to publish to your MQTT broker announces itself continuously instead: it is discovered, it reports in real time, and it can still be controlled when it is unreachable on the local network. Configure the broker in each Shelly: Settings, then MQTT, then tick Enable, Enable MQTT Control and RPC status notifications over MQTT.",
+        "fr": "Optionnel, et le moyen le plus fiable de joindre une grande installation. Les Shelly s'annoncent en mDNS par courtes rafales multicast faciles à manquer : au-delà de quelques appareils, certains ne sont jamais découverts. Un appareil configuré pour publier sur votre broker MQTT s'annonce en permanence : il est découvert, il remonte en temps réel, et il reste pilotable même injoignable sur le réseau local. Configurez le broker dans chaque Shelly : Réglages, puis MQTT, puis cochez Enable, Enable MQTT Control et RPC status notifications over MQTT."
+      },
+      "links": [
+        {
+          "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Mqtt",
+          "label": {
+            "en": "Shelly MQTT documentation",
+            "fr": "Documentation MQTT de Shelly"
+          }
+        }
+      ]
+    },
+    {
+      "key": "mqtt_enabled",
+      "type": "boolean",
+      "label": {
+        "en": "Enable MQTT",
+        "fr": "Activer MQTT"
+      },
+      "description": {
+        "en": "Listen to your MQTT broker to discover, read and control the Shelly devices that publish to it.",
+        "fr": "Écouter votre broker MQTT pour découvrir, lire et piloter les Shelly qui y publient."
+      },
+      "required": false,
+      "default": false
+    },
+    {
+      "key": "mqtt_server",
+      "type": "string",
+      "label": {
+        "en": "MQTT broker address",
+        "fr": "Adresse du broker MQTT"
+      },
+      "description": {
+        "en": "Host and port of your broker, exactly as entered in the Server field of your Shelly devices. The port defaults to 1883.",
+        "fr": "Hôte et port de votre broker, tels que saisis dans le champ Server de vos Shelly. Le port vaut 1883 par défaut."
+      },
+      "placeholder": {
+        "en": "10.5.0.50:1883",
+        "fr": "10.5.0.50:1883"
+      },
+      "required": false
+    },
+    {
+      "key": "mqtt_username",
+      "type": "string",
+      "label": {
+        "en": "MQTT username",
+        "fr": "Nom d'utilisateur MQTT"
+      },
+      "description": {
+        "en": "Only if your broker requires authentication. Use the same credentials you set in your Shelly devices.",
+        "fr": "Uniquement si votre broker exige une authentification. Utilisez les mêmes identifiants que dans vos Shelly."
+      },
+      "required": false
+    },
+    {
+      "key": "mqtt_password",
+      "type": "secret",
+      "label": {
+        "en": "MQTT password",
+        "fr": "Mot de passe MQTT"
+      },
+      "description": {
+        "en": "Only if your broker requires authentication.",
+        "fr": "Uniquement si votre broker exige une authentification."
       },
       "required": false
     },
@@ -163,10 +256,85 @@
       "required": false,
       "default": "30",
       "options": [
-        { "value": "10", "label": { "en": "10 seconds", "fr": "10 secondes" } },
-        { "value": "30", "label": { "en": "30 seconds", "fr": "30 secondes" } },
-        { "value": "60", "label": { "en": "1 minute", "fr": "1 minute" } },
-        { "value": "300", "label": { "en": "5 minutes", "fr": "5 minutes" } }
+        {
+          "value": "10",
+          "label": {
+            "en": "10 seconds",
+            "fr": "10 secondes"
+          }
+        },
+        {
+          "value": "30",
+          "label": {
+            "en": "30 seconds",
+            "fr": "30 secondes"
+          }
+        },
+        {
+          "value": "60",
+          "label": {
+            "en": "1 minute",
+            "fr": "1 minute"
+          }
+        },
+        {
+          "value": "300",
+          "label": {
+            "en": "5 minutes",
+            "fr": "5 minutes"
+          }
+        }
+      ]
+    },
+    {
+      "key": "realtime_interval",
+      "type": "select",
+      "label": {
+        "en": "Real-time interval (power and on/off)",
+        "fr": "Intervalle temps réel (puissance et marche/arrêt)"
+      },
+      "description": {
+        "en": "How fast the values a scene reacts to are published: total power, per-relay power and on/off states. Everything else (per-phase detail, energy counters, temperatures) follows the refresh interval above. Gladys accepts 300 states per minute in total, so a short interval here is only sustainable because the lane is kept small — widen your device count and you may need to raise it.",
+        "fr": "Vitesse de publication des valeurs auxquelles une scène réagit : puissance totale, puissance par relais et états marche/arrêt. Tout le reste (détail par phase, compteurs d'énergie, températures) suit l'intervalle de rafraîchissement ci-dessus. Gladys accepte 300 états par minute au total, donc un intervalle court n'est tenable que parce que cette voie reste étroite — avec beaucoup d'appareils il faudra sans doute l'augmenter."
+      },
+      "required": false,
+      "default": "5",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "1 second",
+            "fr": "1 seconde"
+          }
+        },
+        {
+          "value": "5",
+          "label": {
+            "en": "5 seconds",
+            "fr": "5 secondes"
+          }
+        },
+        {
+          "value": "10",
+          "label": {
+            "en": "10 seconds",
+            "fr": "10 secondes"
+          }
+        },
+        {
+          "value": "30",
+          "label": {
+            "en": "30 seconds",
+            "fr": "30 secondes"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Disabled",
+            "fr": "Désactivé"
+          }
+        }
       ]
     }
   ]
