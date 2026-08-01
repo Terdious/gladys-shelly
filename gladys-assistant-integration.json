@@ -50,6 +50,10 @@
         "en": "Optional. Comma-separated IP addresses or hostnames of Shelly devices that mDNS does not find (different VLAN, mDNS disabled on the device, static setup). Example: 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local",
         "fr": "Optionnel. Adresses IP ou noms d'hôte, séparés par des virgules, des Shelly que le mDNS ne trouve pas (autre VLAN, mDNS désactivé sur l'appareil, configuration statique). Exemple : 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local"
       },
+      "placeholder": {
+        "en": "10.5.0.171, 10.5.0.172",
+        "fr": "10.5.0.171, 10.5.0.172"
+      },
       "required": false
     },
     {
@@ -124,6 +128,10 @@
       "description": {
         "en": "The server your account is hosted on, shown next to the authorization key in the Shelly app. Example: shelly-53-eu.shelly.cloud",
         "fr": "Le serveur qui héberge votre compte, affiché à côté de la clé d'autorisation dans l'application Shelly. Exemple : shelly-53-eu.shelly.cloud"
+      },
+      "placeholder": {
+        "en": "shelly-53-eu.shelly.cloud",
+        "fr": "shelly-53-eu.shelly.cloud"
       },
       "required": false
     },

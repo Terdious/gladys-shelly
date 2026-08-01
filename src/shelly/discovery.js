@@ -30,12 +30,30 @@ import {
   DEVICE_TYPE,
   MDNS_ROUND_TIMEOUT_SECONDS,
   MDNS_ROUNDS,
-  MDNS_SERVICE,
+  MDNS_SERVICE_NAME,
   POLL_CONCURRENCY,
   SKIP_REASON,
 } from './constants.js';
 import { buildDevice, readHost, readShellyId } from './deviceMapping.js';
 import { getShellyInfo, ShellyAuthError } from './rpc.js';
+
+/**
+ * Whether an mDNS record proves it belongs to a service that is NOT Shelly.
+ *
+ * The rule is deliberately narrow — drop only what IDENTIFIES ITSELF as
+ * something else. A Shelly named in the app announces under that name
+ * ("Prise Lave-vaisselle._shelly._tcp.local", "Pro3 L1 Batiment Perso"), so any
+ * test of the form "the name starts with shelly" silently loses exactly the
+ * devices the user cared enough about to name — and loses them in the way that
+ * looks like "my device is not supported".
+ *
+ * @param {string} name the record name
+ * @returns {boolean} true when the record announces another service
+ */
+function announcesAnotherService(name) {
+  const match = name.match(/\._([a-z0-9-]+)\._(?:tcp|udp)\b/i);
+  return Boolean(match) && match[1].toLowerCase() !== MDNS_SERVICE_NAME;
+}
 
 /**
  * Keep the usable IPv4 addresses out of a batch of raw mDNS records.
@@ -44,12 +62,7 @@ import { getShellyInfo, ShellyAuthError } from './rpc.js';
  */
 function extractShellyHosts(records) {
   const hosts = (records || [])
-    .filter((record) => {
-      // The core browses everything it was asked to; keep only the Shelly
-      // service in case a future core widens the capture.
-      const name = `${record?.name || ''}`;
-      return name.includes(MDNS_SERVICE) || name.toLowerCase().startsWith('shelly');
-    })
+    .filter((record) => !announcesAnotherService(`${record?.name || ''}`))
     .flatMap((record) => record?.addresses || [])
     // IPv6 link-local addresses are announced too and are not reachable from
     // the container: keep the IPv4 ones.
@@ -72,6 +85,13 @@ function extractShellyHosts(records) {
 export async function browseMdnsOnce(gladys, timeoutSeconds = MDNS_ROUND_TIMEOUT_SECONDS) {
   try {
     const records = await gladys.scanNetwork('mdns', { timeoutSeconds });
+    // The record NAMES, not just the addresses: a device missing from a scan is
+    // diagnosed by whether it announced itself at all, and under what name.
+    (records || []).forEach((record) => {
+      logger.debug(
+        `mDNS record: ${record?.name || '(no name)'} -> ${(record?.addresses || []).join(', ') || '(no address)'}`,
+      );
+    });
     return extractShellyHosts(records);
   } catch (err) {
     logger.warn(

@@ -49,6 +49,24 @@ describe('browseMdns', () => {
     assert.deepEqual(await browseMdns(gladys), ['10.5.0.171', '10.5.0.180']);
   });
 
+  it('keeps a device that was RENAMED in the Shelly app', async () => {
+    // A Shelly renamed in the app announces under that name, not under
+    // `shellypro3-<mac>`. Testing "the name starts with shelly" loses exactly
+    // the devices the user cared enough about to name — and loses them in the
+    // way that reads as "my device is not supported".
+    const gladys = fakeGladys({
+      mdns: [
+        { name: 'Pro3 L1 Batiment Perso._shelly._tcp.local.', addresses: ['10.5.0.209'] },
+        { name: 'Prise Lave-vaisselle._shelly._tcp.local.', addresses: ['10.5.0.190'] },
+        // Some cores hand over the instance name alone, with no service suffix:
+        // there is nothing left to match on, and the record is still a Shelly.
+        { name: 'Arrivee EDF - L1', addresses: ['10.5.0.174'] },
+      ],
+    });
+
+    assert.deepEqual(await browseMdns(gladys), ['10.5.0.209', '10.5.0.190', '10.5.0.174']);
+  });
+
   it('merges several browse rounds, because one snapshot comes back short', async () => {
     // A device that was busy or unlucky with multicast collisions during the
     // first browse answers the second. Losing it would look to the user like

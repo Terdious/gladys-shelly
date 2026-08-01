@@ -13,6 +13,9 @@ export const DEVICE_TYPE = 'device';
 /** mDNS service Shelly devices announce themselves on. */
 export const MDNS_SERVICE = '_shelly._tcp';
 
+/** The service part of `_shelly._tcp`, used to tell a Shelly record from another service. */
+export const MDNS_SERVICE_NAME = 'shelly';
+
 /** Default HTTP port of a Shelly device. */
 export const DEFAULT_HTTP_PORT = 80;
 
