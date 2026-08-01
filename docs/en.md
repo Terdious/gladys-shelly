@@ -10,9 +10,17 @@ on the wall appears in Gladys in about a second. It can fall back to the
 mandatory account: a fully local setup works with an **entirely empty form**.
 
 > **Supported generations:** Gen2 and later — Shelly **Plus**, **Pro**,
-> **Mini**, **Gen3**, **Gen4**. **Gen1** devices (Shelly 1, 2.5, Plug S
-> "SHPLG-S", Dimmer 2…) use a completely different API and are **not supported
-> yet**; they are detected and skipped cleanly, with an explicit log line.
+> **Mini**, **Gen3**, **Gen4** — **and Gen1** (Shelly 1, 1PM, 2.5, Plug S
+> "SHPLG-S", EM, 3EM…).
+>
+> Gen1 speaks a completely different API (REST instead of JSON-RPC, Basic auth
+> instead of Digest), but the integration normalizes it into the **same model**:
+> a Gen1 Shelly 3EM exposes exactly the same features, under the same names, as
+> a Gen2 Pro 3EM. Your dashboards and scenes cannot tell them apart.
+>
+> One limit worth knowing: Gen1 devices have **no real-time channel today**.
+> Their push protocol (CoIoT) is multicast, which never reaches a Docker
+> container, so their values follow the refresh interval.
 
 ---
 
@@ -140,7 +148,7 @@ Hardware validated by design against real payloads: **Shelly Pro 3EM**,
 **Shelly Pro 4PM**, **Shelly Plus Plug S**.
 
 > **Not supported yet:** roller shutters (`cover`), dimmable lights (`light`),
-> inputs (`input`), Gen1 devices. See the [roadmap](./ROADMAP.md).
+> inputs (`input`). See the [roadmap](./ROADMAP.md).
 
 ### The neutral current
 
@@ -183,8 +191,8 @@ are preserved.
 
 1. **Check that the device answers.** From a browser on the same network, open
    `http://<shelly-ip>/shelly`. You should see JSON containing `"gen": 2` (or 3,
-   or 4). If there is **no** `gen` field, this is a Gen1 device: not supported
-   yet.
+   or 4). If there is **no** `gen` field but a `"type"` field, this is a Gen1
+   device: supported too, over polling.
 2. **mDNS does not cross VLANs, nor some Wi-Fi access points.** Enter the IP
    addresses by hand in **Additional device addresses**, then save: the
    discovery re-runs automatically.

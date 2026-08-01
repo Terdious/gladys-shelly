@@ -155,7 +155,7 @@ Matériel validé par conception sur les payloads réels : **Shelly Pro 3EM**,
 **Shelly Pro 4PM**, **Shelly Plus Plug S**.
 
 > **Pas encore supportés :** volets roulants (`cover`), éclairages variables
-> (`light`), entrées (`input`), appareils Gen1. Voir la
+> (`light`), entrées (`input`). Voir la
 > [roadmap](./ROADMAP.md).
 
 ### Le courant de neutre

@@ -17,7 +17,7 @@
 - **Discovery** (`src/shelly/discovery.js`): core-mediated mDNS
   (`_shelly._tcp`, contract B.16) merged with hand-typed addresses and the
   addresses of the already-created devices, unicast probing with bounded
-  concurrency, deduplication on the hardware identity, explicit Gen1 skip.
+  concurrency, deduplication on the hardware identity, Gen1 and Gen2+ side by side.
 - **Capability-derived device model** (`src/shelly/features.js`): the feature
   set comes from the components the device actually reports, never from a model
   table — a Shelly released after this code still maps. Covers `switch`, `em`,
