@@ -85,13 +85,19 @@ function extractShellyHosts(records) {
 export async function browseMdnsOnce(gladys, timeoutSeconds = MDNS_ROUND_TIMEOUT_SECONDS) {
   try {
     const records = await gladys.scanNetwork('mdns', { timeoutSeconds });
-    // The record NAMES, not just the addresses: a device missing from a scan is
-    // diagnosed by whether it announced itself at all, and under what name.
-    (records || []).forEach((record) => {
-      logger.debug(
-        `mDNS record: ${record?.name || '(no name)'} -> ${(record?.addresses || []).join(', ') || '(no address)'}`,
-      );
-    });
+    // The record NAMES, not just the addresses, and at INFO: "my Shelly is
+    // missing" is answered by whether it announced itself at all and under what
+    // name — a device renamed in the app announces under that name. Burying
+    // this at debug is what made a whole class of missing device undiagnosable.
+    const announced = (records || []).map(
+      (record) =>
+        `${record?.name || '(no name)'} -> ${(record?.addresses || []).join('/') || '(no address)'}`,
+    );
+    if (announced.length > 0) {
+      logger.info(`mDNS browse: ${announced.length} record(s) — ${announced.join('; ')}`);
+    } else {
+      logger.info('mDNS browse: nothing answered');
+    }
     return extractShellyHosts(records);
   } catch (err) {
     logger.warn(
@@ -327,14 +333,6 @@ export async function discoverDevices({
   const devices = [...byExternalId.values()];
   const skipped = [...outcomes.values()].filter((outcome) => !outcome.device);
 
-  // The addresses mDNS announced, listed in full: when a device is missing,
-  // the first question is whether it announced itself at all, and this is the
-  // line the user can compare with their router's lease table.
-  if (mdnsHosts.size > 0) {
-    logger.info(
-      `Discovery: mDNS announced ${mdnsHosts.size} address(es): ${[...mdnsHosts].join(', ')}`,
-    );
-  }
   logger.info(
     `Discovery: ${devices.length} Shelly device(s) found, ${skipped.length} address(es) skipped`,
   );
