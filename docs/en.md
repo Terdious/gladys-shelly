@@ -305,12 +305,28 @@ free, a value that always moves costs a slot in every window. So the integration
 passes 240 states per minute — and it says so:
 
 ```
-Real-time lane slowed to 10s (you asked for 5s): the fleet is publishing more
-than 240 states/min and the Gladys limit is 300/min.
+Real-time lane slowed to 10s (you asked for 5s): the fleet is publishing
+612 states/min, and the limit is 300/min. It speeds back up on its own; create
+fewer devices, or raise the refresh interval, to stay at 5s.
 ```
 
 Your setting is a **floor**: the lane returns to it on its own as soon as the
 budget allows. A slower lane is visible; a state Gladys refuses would not be.
+
+The controller is deliberately slow to change its mind: it slows down in
+proportion (a big installation reaches its cadence in one or two steps) but it
+speeds back up **one second at a time**, only once the rate has fallen well
+under the threshold, and never more than once a minute. The rate is measured
+over a rolling minute, so deciding faster would mean deciding on a number that
+still describes the previous cadence — and oscillating.
+
+If Gladys refuses states anyway, it says so by name, and the lane slows down
+immediately without waiting:
+
+```
+Gladys refused 38 state(s): over the 300/min limit. They are retried on the
+next cycle, and the real-time lane slows down.
+```
 
 Once a minute, one line tells you where you stand:
 

@@ -317,12 +317,28 @@ fenêtre. L'intégration **mesure** donc ce qu'elle publie réellement et allong
 son propre intervalle quand elle dépasse 240 états par minute — et elle le dit :
 
 ```
-Real-time lane slowed to 10s (you asked for 5s): the fleet is publishing more
-than 240 states/min and the Gladys limit is 300/min.
+Real-time lane slowed to 10s (you asked for 5s): the fleet is publishing
+612 states/min, and the limit is 300/min. It speeds back up on its own; create
+fewer devices, or raise the refresh interval, to stay at 5s.
 ```
 
 Votre réglage est un **plancher** : la voie y revient d'elle-même dès que le
 budget le permet. Ralentir se voit, un état refusé par Gladys ne se verrait pas.
+
+Le régulateur est volontairement lent à changer d'avis : il ralentit
+proportionnellement (une grosse installation atteint sa cadence en un ou deux
+pas), mais il ne réaccélère **qu'une seconde à la fois**, seulement une fois le
+débit redescendu nettement sous le seuil, et jamais plus d'une fois par minute.
+La mesure porte sur une minute glissante : décider plus vite reviendrait à
+décider sur un chiffre qui décrit encore la cadence précédente — et à osciller.
+
+Si Gladys refuse malgré tout des états, vous le verrez nommément, et la voie
+ralentit immédiatement sans attendre :
+
+```
+Gladys refused 38 state(s): over the 300/min limit. They are retried on the
+next cycle, and the real-time lane slows down.
+```
 
 Chaque minute, une ligne récapitule où vous en êtes :
 

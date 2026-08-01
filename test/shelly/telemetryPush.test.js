@@ -196,24 +196,23 @@ describe('telemetry with the real-time push channel', () => {
       status: structuredClone(PRO_3EM_STATUS),
     });
     devices.push(device);
-    // A frozen clock keeps every state inside the one-minute budget window, so
-    // a fleet's worth of traffic can be spent without waiting a real minute.
-    const frozen = Date.now();
+    // A clock we advance by hand: the controller reasons over a rolling MINUTE,
+    // and no test should take a minute to prove it.
+    const clock = { at: Date.now() };
     const { telemetry, published } = engineFor(
       device,
       { realtime_interval: '1' },
-      { now: () => frozen },
+      { now: () => clock.at },
     );
 
     await telemetry.refreshValues();
     await waitFor(() => telemetry.wsHub.isLive('shellypro3em-budget'));
+    assert.equal(telemetry.effectiveRealtimeSeconds(), 1, 'an idle fleet gets what it asked for');
 
-    // Spend three times the safe rate (240/min), which asks the lane for a
-    // three times longer interval: 1 s becomes 3 s.
-    let spin = 0;
-    while (published.length < 720) {
-      spin += 1;
-      assert.ok(spin < 200, 'the budget should be spent in far fewer cycles than this');
+    // Spend far past the safe rate (240/min), spread over a virtual minute so
+    // the states land in the measurement window AND the dwell elapses.
+    for (let spin = 1; spin <= 45; spin += 1) {
+      clock.at += 1500;
       const em = { id: 0 };
       Object.entries(device.status['em:0']).forEach(([key, value]) => {
         em[key] = key === 'id' || typeof value !== 'number' ? value : value + spin;
@@ -227,22 +226,55 @@ describe('telemetry with the real-time push channel', () => {
        
       await telemetry.refreshValues();
     }
+    assert.ok(published.length > 500, `expected a busy fleet, got ${published.length} states`);
 
-    // Let any flush armed at the OLD interval fire, so what follows is measured
-    // against the stretched one and not against a timer from before.
-    await new Promise((resolve) => setTimeout(resolve, 1300));
-    published.length = 0;
+    const slowed = telemetry.effectiveRealtimeSeconds();
+    assert.ok(slowed > 1, `the lane must stretch when over budget, stayed at ${slowed}s`);
 
-    device.push({ 'em:0': { id: 0, total_act_power: -4242.4 } });
-    await new Promise((resolve) => setTimeout(resolve, 1400));
+    // The bench bug: it used to snap straight back to the configured interval
+    // on the first sample under the threshold, then blow past it again — 5 s,
+    // 6 s, 5 s, 6 s, four times a minute. The rate must fall well under the
+    // threshold before it speeds up, and then only one second at a time.
+    clock.at += 61000;
     assert.equal(
-      published.some((s) => s.state === -4242.4),
-      false,
-      'the lane must not still run at the configured interval once over budget',
+      telemetry.effectiveRealtimeSeconds(),
+      slowed - 1,
+      'it must step back down, not snap back to the floor',
     );
 
-    // Still published, just later: slower is a trade-off, dropped is a bug.
-    await waitFor(() => published.some((s) => s.state === -4242.4), { timeout: 5000 });
+    // And it holds that decision for a full window. The rate is a rolling
+    // minute, so re-deciding after thirty seconds means deciding on a number
+    // that still describes the previous cadence.
+    clock.at += 30000;
+    assert.equal(
+      telemetry.effectiveRealtimeSeconds(),
+      slowed - 1,
+      'a decision must hold for the window it will be judged on',
+    );
+
+    // Now the case that actually flapped on the bench: a rate that sits just
+    // UNDER the slow-down threshold. A single threshold reads that as "there is
+    // room again", speeds up, goes straight back over, and the log fills with
+    // 5 s / 6 s / 5 s / 6 s. It must hold instead.
+    const held = telemetry.effectiveRealtimeSeconds();
+    const inBand = 220; // between REALTIME_RELAX_RATE (200) and the 240 threshold
+    for (let spin = 1; spin <= inBand; spin += 1) {
+      // Spent in a burst SHORTER than the dwell, so the whole burst is still in
+      // the measurement window when the controller is next allowed to decide.
+      clock.at += 90;
+      device.push({ 'em:0': { id: 0, a_act_power: spin } });
+       
+      await new Promise((resolve) => setTimeout(resolve, 1));
+       
+      await telemetry.flushFast();
+    }
+    clock.at += 41000;
+
+    assert.equal(
+      telemetry.effectiveRealtimeSeconds(),
+      held,
+      'a rate just under the threshold must not be read as room to speed up',
+    );
   });
 
   it('serves a live device from its buffer instead of polling it over HTTP', async () => {

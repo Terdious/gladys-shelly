@@ -85,6 +85,27 @@ const RATE_WARNING_THRESHOLD = 0.8;
  */
 const REALTIME_SAFE_RATE = 240;
 
+/**
+ * Rate the lane must fall back UNDER before it speeds up again.
+ *
+ * The gap with `REALTIME_SAFE_RATE` is deliberate. Slowing down lowers the rate
+ * just below the threshold, which — with a single threshold — immediately reads
+ * as "there is room again", and the lane flips back and forth every few
+ * seconds. The bench showed exactly that: 5 s, 6 s, 5 s, 6 s, four times a
+ * minute. A decision only holds if the measurement has room to settle on the
+ * other side of it.
+ */
+const REALTIME_RELAX_RATE = 200;
+
+/**
+ * Minimum time between two cadence changes, in ms.
+ *
+ * The rate is measured over a ROLLING MINUTE, so a change made now is only
+ * fully reflected in the measurement a minute later. Deciding faster than that
+ * means deciding on a number that still describes the previous cadence.
+ */
+const REALTIME_ADJUST_DWELL_MS = 60000;
+
 /** Longest the lane will stretch itself to, in seconds, however big the fleet. */
 const MAX_REALTIME_SECONDS = 60;
 
@@ -140,8 +161,11 @@ export function createTelemetry({
   /** Real-time states published since the last summary, and when it was logged. */
   let realtimePublished = 0;
   let lastRealtimeSummaryAt = 0;
-  /** Last cadence the lane announced, so a change is logged once and not every flush. */
-  let lastAnnouncedRealtimeSeconds = null;
+  /** Cadence the lane is running at, and when it last changed. */
+  let currentRealtimeSeconds = null;
+  let lastCadenceChangeAt = 0;
+  /** When the host API last answered "Too Many Requests", the one authoritative signal. */
+  let rateLimitedAt = 0;
 
   let timer = null;
   let fastFlushTimer = null;
@@ -309,31 +333,78 @@ export function createTelemetry({
   }
 
   /**
-   * The cadence the real-time lane will actually run at.
+   * The cadence the real-time lane runs at.
    *
    * The configured interval is a FLOOR, not a promise: it is what the lane runs
    * at whenever the budget allows, and it does on any ordinary installation. On
    * a fleet large enough to spend more than `REALTIME_SAFE_RATE` states a
-   * minute, the lane stretches itself in proportion — publishing half as often
-   * costs half as much, so one step converges. Losing states to the host API
-   * would be worse than a slower lane: a dropped state is invisible, a slower
-   * one is merely slower, and it is announced.
+   * minute, the lane stretches itself. Losing states to the host API would be
+   * worse than a slower lane: a dropped state is invisible, a slower one is
+   * merely slower, and it is announced.
+   *
+   * Three rules keep this a controller rather than a coin flip:
+   *   - it reacts to overload IN PROPORTION (publishing half as often costs
+   *     half as much, so a big fleet reaches its cadence in one or two steps
+   *     instead of crawling there a second at a time);
+   *   - it speeds back up ONE SECOND AT A TIME, and only once the rate has
+   *     fallen well under the threshold (`REALTIME_RELAX_RATE`);
+   *   - it holds any decision for a full measurement window, because the rate
+   *     it reads is a rolling minute and a fresher number would still describe
+   *     the previous cadence.
+   * A "Too Many Requests" from the host bypasses the dwell: that is not our
+   * estimate of the budget, it is the budget itself talking.
    *
    * @returns {number} the interval in seconds, or 0 when the lane is disabled
    */
   function effectiveRealtimeSeconds() {
     const { realtimeSeconds } = getConfig();
     if (!realtimeSeconds) {
+      currentRealtimeSeconds = null;
       return 0;
     }
-    const rate = currentPublishRate(now());
-    if (rate <= REALTIME_SAFE_RATE) {
-      return realtimeSeconds;
+    const timestamp = now();
+    // First call, or the user just changed the setting: honour it as-is. A
+    // configured value ABOVE the current one is never overridden — the user
+    // asking for a slower lane is not something to regulate around.
+    if (currentRealtimeSeconds === null || currentRealtimeSeconds < realtimeSeconds) {
+      currentRealtimeSeconds = realtimeSeconds;
+      lastCadenceChangeAt = timestamp;
+      return currentRealtimeSeconds;
     }
-    return Math.min(
-      Math.ceil(realtimeSeconds * (rate / REALTIME_SAFE_RATE)),
-      MAX_REALTIME_SECONDS,
-    );
+
+    const rate = currentPublishRate(timestamp);
+    const refused = rateLimitedAt > lastCadenceChangeAt;
+    if (!refused && timestamp - lastCadenceChangeAt < REALTIME_ADJUST_DWELL_MS) {
+      return currentRealtimeSeconds;
+    }
+
+    let next = currentRealtimeSeconds;
+    if (refused || rate > REALTIME_SAFE_RATE) {
+      // `rate` can sit below the threshold and still have been refused (a burst
+      // inside the window), so a proportional step needs a floor of one second.
+      const scaled = Math.ceil(currentRealtimeSeconds * (rate / REALTIME_SAFE_RATE));
+      next = Math.min(Math.max(scaled, currentRealtimeSeconds + 1), MAX_REALTIME_SECONDS);
+    } else if (rate < REALTIME_RELAX_RATE) {
+      next = Math.max(currentRealtimeSeconds - 1, realtimeSeconds);
+    }
+    if (next === currentRealtimeSeconds) {
+      return currentRealtimeSeconds;
+    }
+
+    if (next > currentRealtimeSeconds) {
+      logger.info(
+        `Real-time lane slowed to ${next}s (you asked for ${realtimeSeconds}s): ` +
+          `${refused ? 'Gladys refused states' : `the fleet is publishing ${rate} states/min`}, ` +
+          `and the limit is ${STATE_RATE_LIMIT_PER_MINUTE}/min. It speeds back up on its own; ` +
+          'create fewer devices, or raise the refresh interval, to stay at ' +
+          `${realtimeSeconds}s.`,
+      );
+    } else {
+      logger.info(`Real-time lane back to ${next}s (${rate} states/min, there is room again)`);
+    }
+    currentRealtimeSeconds = next;
+    lastCadenceChangeAt = timestamp;
+    return currentRealtimeSeconds;
   }
 
   /**
@@ -357,7 +428,19 @@ export function createTelemetry({
         });
       } catch (err) {
         // Do NOT record these as published: the next cycle must retry them.
-        logger.warn(`Publishing ${batch.length} state(s) failed: ${err.message}`);
+        if (/too many requests|rate limit|429/i.test(err.message || '')) {
+          // The host just told us the budget is spent. That beats any estimate
+          // we could make, so it slows the lane down without waiting for the
+          // dwell — and it is not the same event as "we are getting close".
+          rateLimitedAt = timestamp;
+          logger.warn(
+            `Gladys refused ${batch.length} state(s): over the ` +
+              `${STATE_RATE_LIMIT_PER_MINUTE}/min limit. They are retried on the next cycle, ` +
+              'and the real-time lane slows down.',
+          );
+        } else {
+          logger.warn(`Publishing ${batch.length} state(s) failed: ${err.message}`);
+        }
       }
     }
     return published;
@@ -420,17 +503,6 @@ export function createTelemetry({
       // Lane disabled: those values ride the normal refresh cycle like the rest.
       return;
     }
-    if (lastAnnouncedRealtimeSeconds !== null && realtimeSeconds !== lastAnnouncedRealtimeSeconds) {
-      const configured = getConfig().realtimeSeconds;
-      logger.info(
-        realtimeSeconds > configured
-          ? `Real-time lane slowed to ${realtimeSeconds}s (you asked for ${configured}s): the fleet ` +
-              `is publishing more than ${REALTIME_SAFE_RATE} states/min and the Gladys limit is ` +
-              `${STATE_RATE_LIMIT_PER_MINUTE}/min. Create fewer devices to get back to ${configured}s.`
-          : `Real-time lane back to ${realtimeSeconds}s`,
-      );
-    }
-    lastAnnouncedRealtimeSeconds = realtimeSeconds;
     fastFlushTimer = setTimeout(() => {
       flushFast().catch((err) => logger.warn(`Real-time flush failed: ${err.message}`));
     }, realtimeSeconds * 1000);
@@ -695,5 +767,6 @@ export function createTelemetry({
     wsHub,
     mqttHub,
     flushFast,
+    effectiveRealtimeSeconds,
   };
 }
