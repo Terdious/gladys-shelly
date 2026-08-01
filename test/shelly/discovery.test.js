@@ -643,3 +643,35 @@ describe('publishing a discovery result that does not fit', () => {
     assert.equal(calls, 1, 'a network error must not trigger the shedding loop');
   });
 });
+
+describe('recognising an oversized-payload refusal', () => {
+  const device = (id) => ({ name: id, external_id: id, selector: id, features: [], params: [] });
+
+  // The core spells this error differently before and after
+  // GladysAssistant/Gladys#2732: body-parser's raw `request entity too large`,
+  // and the typed `PAYLOAD_TOO_LARGE`. Missing the underscored form would make
+  // the shedding silently stop working on newer cores.
+  for (const message of [
+    'PayloadTooLargeError: request entity too large',
+    'PAYLOAD_TOO_LARGE',
+    'HTTP 413',
+  ]) {
+    it(`sheds on "${message}"`, async () => {
+      let lastLength = null;
+      const gladys = {
+        async publishDiscoveredDevices(devices) {
+          if (devices.length > 1) {
+            throw new Error(message);
+          }
+          lastLength = devices.length;
+        },
+      };
+      const published = await publishDiscovered({
+        gladys,
+        devices: [device('ext:a'), device('ext:b')],
+      });
+      assert.equal(published, 1);
+      assert.equal(lastLength, 1);
+    });
+  }
+});

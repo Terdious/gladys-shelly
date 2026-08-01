@@ -586,7 +586,11 @@ export async function publishDiscovered({ gladys, devices, createdExternalIds = 
       }
       return candidates.length;
     } catch (err) {
-      const tooLarge = /too large|413/i.test(err.message || '');
+      // Matches both the raw body-parser message (`request entity too large`)
+      // and the core's typed error once GladysAssistant/Gladys#2732 lands
+      // (`PAYLOAD_TOO_LARGE`, underscored) — the underscore alone would
+      // otherwise make this whole safety net silently stop working.
+      const tooLarge = /too[ _-]?large|413/i.test(err.message || '');
       if (!tooLarge || candidates.length <= 1) {
         logger.warn(`Could not publish the discovery result: ${err.message}`);
         return 0;
