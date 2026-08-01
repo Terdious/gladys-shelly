@@ -114,6 +114,9 @@ export function createTelemetry({
   /** Timestamps of the states published in the last minute, for the budget guard. */
   let publishTimestamps = [];
   let lastRateWarningAt = 0;
+  /** Real-time states published since the last summary, and when it was logged. */
+  let realtimePublished = 0;
+  let lastRealtimeSummaryAt = 0;
 
   let timer = null;
   let fastFlushTimer = null;
@@ -134,12 +137,51 @@ export function createTelemetry({
     ...(WebSocketImpl ? { WebSocketImpl } : {}),
   });
 
+  /**
+   * Devices whose FULL status we have obtained over MQTT.
+   *
+   * Publishing on MQTT is not the same as being readable over MQTT, and the
+   * difference decides whether this device can stop being polled. Pushed frames
+   * are PARTIAL — they carry what moved — so a device served from them alone
+   * never reports a value that does not change: an idle relay's power, a
+   * voltage that holds steady. Those features would sit on "no recent value"
+   * forever while their neighbours update, which is precisely what the bench
+   * saw.
+   *
+   * So a device only counts as live once it has answered `Shelly.GetStatus`
+   * over the broker, exactly like the WebSocket handshake. A device that
+   * publishes but has "MQTT Control" disabled keeps being polled over HTTP,
+   * which is the correct outcome rather than a silently starved one.
+   */
+  const mqttSeeded = new Set();
+
   // MQTT feeds the SAME buffer as the WebSocket: `<prefix>/events/rpc` carries
   // identical `NotifyStatus` frames, and the Gen1 dialect is normalized into
   // the same component shape before it gets here. One push path, three sources.
   const mqttHub = createMqttHub({
     getConfig,
     onStatus: (shellyId, status) => bufferPushedStatus(shellyId, status),
+    onDeviceSeen: (shellyId) => {
+      // The MQTT equivalent of the WebSocket handshake: one full snapshot, so
+      // every feature has a value before we rely on partial frames.
+      mqttHub
+        .request(shellyId, 'Shelly.GetStatus')
+        .then((status) => {
+          if (!status) {
+            return;
+          }
+          mqttSeeded.add(shellyId);
+          bufferPushedStatus(shellyId, status);
+          logger.info(`${shellyId}: full status read over MQTT — real-time updates flowing`);
+        })
+        .catch((err) => {
+          logger.info(
+            `${shellyId}: publishes on MQTT but did not answer a full status read ` +
+              `(${err.message}) — it stays on the polling path. Tick "Enable MQTT Control" ` +
+              'on the device to serve it from the broker.',
+          );
+        });
+    },
     ...(mqttImpl ? { mqttImpl } : {}),
   });
 
@@ -284,8 +326,24 @@ export function createTelemetry({
     if (states.length === 0) {
       return;
     }
-    await publishStates(states, timestamp);
-    logger.debug(`Real-time push: ${states.length} state(s) published`);
+    const published = await publishStates(states, timestamp);
+    realtimePublished += published;
+
+    // Once a minute, at INFO. "Are my values really refreshing every 5 s?" is
+    // not a question a user should have to answer by staring at a dashboard,
+    // and a debug-level line is invisible where it matters.
+    if (lastRealtimeSummaryAt === 0) {
+      lastRealtimeSummaryAt = timestamp;
+    } else if (timestamp - lastRealtimeSummaryAt >= 60000) {
+      const { realtimeSeconds } = getConfig();
+      logger.info(
+        `Real-time lane: ${realtimePublished} state(s) published in the last minute ` +
+          `(every ${realtimeSeconds}s, from ${wsHub.liveCount()} WebSocket and ` +
+          `${mqttSeeded.size} MQTT device(s))`,
+      );
+      realtimePublished = 0;
+      lastRealtimeSummaryAt = timestamp;
+    }
   }
 
   /** Arm the debounce that flushes the real-time lane at the configured cadence. */
@@ -336,7 +394,7 @@ export function createTelemetry({
     // Live over EITHER push channel. A Gen1 device has no WebSocket at all, so
     // MQTT is the only way it can ever be live — and a Gen2 device the local
     // network cannot reach may still be pushing to the broker.
-    const isLive = wsHub.isLive(target.shellyId) || mqttHub.knows(target.shellyId);
+    const isLive = wsHub.isLive(target.shellyId) || mqttSeeded.has(target.shellyId);
 
     // A live device is served from its buffer, EXCEPT once every safety-net
     // interval: a socket can stay open and silent (device wedged, firmware
@@ -548,6 +606,7 @@ export function createTelemetry({
     }
     wsHub.stop();
     mqttHub.stop();
+    mqttSeeded.clear();
     pushBuffer.clear();
   }
 

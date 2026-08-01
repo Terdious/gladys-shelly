@@ -280,3 +280,55 @@ describe('MQTT as a discovery source', () => {
     assert.equal(device.status['switch:0'].output, true);
   });
 });
+
+describe('a device that publishes but cannot be read over MQTT', () => {
+  let broker;
+  const devices = [];
+  const hubs = [];
+
+  before(async () => {
+    broker = await startFakeBroker();
+  });
+  after(async () => {
+    hubs.forEach((hub) => hub.stop());
+    await Promise.all(devices.map((device) => device.close()));
+    await broker.close();
+  });
+
+  it('is seen, but never answers a full status read', async () => {
+    // "Publishes on MQTT" and "is readable over MQTT" are different things: a
+    // device with "MQTT Control" unticked pushes NotifyStatus but refuses
+    // requests. Pushed frames are PARTIAL, so serving such a device from the
+    // push alone leaves every unchanging value — an idle relay's power, a
+    // steady voltage — permanently without a state. It must keep being polled.
+    const device = await startMqttShelly({
+      address: broker.address,
+      shellyId: 'shellyplus1pm-nocontrol',
+      control: false,
+    });
+    devices.push(device);
+
+    const config = normalizeConfig({ mqtt_enabled: true, mqtt_server: broker.address });
+    const seen = [];
+    const hub = createMqttHub({
+      getConfig: () => config,
+      onStatus: () => {},
+      onDeviceSeen: (shellyId) => seen.push(shellyId),
+    });
+    hubs.push(hub);
+    hub.start();
+
+    await waitFor(() => hub.isConnected());
+    device.push({ 'switch:0': { id: 0, output: true } });
+
+    // It is discovered...
+    await waitFor(() => seen.includes('shellyplus1pm-nocontrol'));
+    // ...but a full read times out, which is what tells telemetry to keep
+    // polling it rather than trust an incomplete picture.
+    await assert.rejects(
+      () => hub.request('shellyplus1pm-nocontrol', 'Shelly.GetStatus'),
+      /MQTT RPC timeout/,
+      'a device without MQTT Control must not silently look readable',
+    );
+  });
+});
