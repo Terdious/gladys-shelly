@@ -6,11 +6,14 @@
     "en": "Connect your Shelly devices (relays, plugs, energy meters) to Gladys Assistant.",
     "fr": "Connectez vos appareils Shelly (relais, prises, compteurs d'énergie) à Gladys Assistant."
   },
-  "version": "0.1.0",
-  "docker_image": "ghcr.io/terdious/gladys-shelly:0.1.0",
+  "version": "1.0.0",
+  "docker_image": "ghcr.io/terdious/gladys-shelly:1.0.0",
   "gladys_version": ">=4.83.0",
   "cover_image": "https://raw.githubusercontent.com/Terdious/gladys-shelly/master/cover.png",
-  "transports": ["local", "cloud"],
+  "transports": [
+    "local",
+    "cloud"
+  ],
   "network_discovery": [
     {
       "type": "mdns",

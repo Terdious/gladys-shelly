@@ -1,6 +1,6 @@
 {
   "name": "gladys-shelly",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Shelly external integration for Gladys Assistant (Gen2+ local RPC and Shelly Cloud).",
   "type": "module",
