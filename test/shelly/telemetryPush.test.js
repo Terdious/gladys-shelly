@@ -4,7 +4,7 @@ import { after, describe, it } from 'node:test';
 import { normalizeConfig } from '../../src/config.js';
 import { createShellyClient } from '../../src/shelly/client.js';
 import { createTelemetry } from '../../src/shelly/telemetry.js';
-import { PRO_4PM_STATUS, startFakeShelly } from '../helpers/fakeShelly.js';
+import { PRO_3EM_STATUS, PRO_4PM_STATUS, startFakeShelly } from '../helpers/fakeShelly.js';
 
 /** Poll until `predicate()` is truthy (or fail after `timeout` ms). */
 async function waitFor(predicate, { timeout = 4000, interval = 10 } = {}) {
@@ -33,7 +33,7 @@ describe('telemetry with the real-time push channel', () => {
    * Build a telemetry engine wired to a real fake device, with a fake Gladys
    * recording everything published.
    */
-  function engineFor(device, rawConfig = {}) {
+  function engineFor(device, rawConfig = {}, { now } = {}) {
     const config = normalizeConfig(rawConfig);
     const published = [];
     const httpPolls = () => device.calls.filter((c) => c.method === 'Shelly.GetStatus').length;
@@ -71,7 +71,12 @@ describe('telemetry with the real-time push channel', () => {
       },
     });
 
-    const telemetry = createTelemetry({ gladys, client, getConfig: () => config });
+    const telemetry = createTelemetry({
+      gladys,
+      client,
+      getConfig: () => config,
+      ...(now ? { now } : {}),
+    });
     engines.push(telemetry);
     return { telemetry, published, httpPolls, gladysDevice };
   }
@@ -132,6 +137,112 @@ describe('telemetry with the real-time push channel', () => {
     // ~900 states/minute against a 300/minute cap.
     assert.equal(sent('switch:1:voltage'), false);
     assert.equal(sent('switch:1:energy'), false);
+  });
+
+  it('puts every phase of a three-phase meter on the real-time lane, not just the total', async () => {
+    // The bench symptom this fixes: on the SAME Pro 3EM the total power
+    // refreshed every 5 s while L1/L2/L3 waited for the 30 s cycle, so the
+    // device looked fast and slow at once ("ça dépend"). A per-phase load is
+    // exactly as real-time as their sum.
+    const device = await startFakeShelly({
+      info: { id: 'shellypro3em-phases', mac: 'F1', gen: 2 },
+      status: structuredClone(PRO_3EM_STATUS),
+    });
+    devices.push(device);
+    const { telemetry, published } = engineFor(device, { realtime_interval: '1' });
+
+    await telemetry.refreshValues();
+    await waitFor(() => telemetry.wsHub.isLive('shellypro3em-phases'));
+    published.length = 0;
+
+    device.push({
+      'em:0': {
+        id: 0,
+        a_act_power: 111.1,
+        b_act_power: 222.2,
+        c_act_power: 333.3,
+        total_act_power: 666.6,
+        a_voltage: 231.9,
+        a_current: 9.876,
+        a_aprt_power: 444.4,
+      },
+    });
+    await waitFor(() =>
+      published.find(
+        (s) => s.device_feature_external_id === featureId(device, 'em:0:total_active_power'),
+      ),
+    );
+
+    const sent = (key) =>
+      published.some((s) => s.device_feature_external_id === featureId(device, key));
+
+    assert.equal(sent('em:0:l1_active_power'), true);
+    assert.equal(sent('em:0:l2_active_power'), true);
+    assert.equal(sent('em:0:l3_active_power'), true);
+    // The lane stays about POWER: adding voltage, current and apparent power
+    // would triple its cost for values nobody controls anything with.
+    assert.equal(sent('em:0:l1_voltage'), false);
+    assert.equal(sent('em:0:l1_current'), false);
+    assert.equal(sent('em:0:l1_apparent_power'), false);
+  });
+
+  it('slows its own lane down rather than losing states to the rate limit', async () => {
+    // The lane is sized by the FLEET, not by the configuration: the same
+    // feature list is free on one meter and over budget on ten. So it measures
+    // what it publishes and stretches itself — a slower lane is visible, a
+    // state the host API refuses is not.
+    const device = await startFakeShelly({
+      info: { id: 'shellypro3em-budget', mac: 'F2', gen: 2 },
+      status: structuredClone(PRO_3EM_STATUS),
+    });
+    devices.push(device);
+    // A frozen clock keeps every state inside the one-minute budget window, so
+    // a fleet's worth of traffic can be spent without waiting a real minute.
+    const frozen = Date.now();
+    const { telemetry, published } = engineFor(
+      device,
+      { realtime_interval: '1' },
+      { now: () => frozen },
+    );
+
+    await telemetry.refreshValues();
+    await waitFor(() => telemetry.wsHub.isLive('shellypro3em-budget'));
+
+    // Spend three times the safe rate (240/min), which asks the lane for a
+    // three times longer interval: 1 s becomes 3 s.
+    let spin = 0;
+    while (published.length < 720) {
+      spin += 1;
+      assert.ok(spin < 200, 'the budget should be spent in far fewer cycles than this');
+      const em = { id: 0 };
+      Object.entries(device.status['em:0']).forEach(([key, value]) => {
+        em[key] = key === 'id' || typeof value !== 'number' ? value : value + spin;
+      });
+      device.status['em:0'] = em;
+      device.push({ 'em:0': em });
+      // The push travels over a real socket: give it a tick to land, otherwise
+      // the cycle below drains an empty buffer and the budget never fills.
+       
+      await new Promise((resolve) => setTimeout(resolve, 5));
+       
+      await telemetry.refreshValues();
+    }
+
+    // Let any flush armed at the OLD interval fire, so what follows is measured
+    // against the stretched one and not against a timer from before.
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+    published.length = 0;
+
+    device.push({ 'em:0': { id: 0, total_act_power: -4242.4 } });
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    assert.equal(
+      published.some((s) => s.state === -4242.4),
+      false,
+      'the lane must not still run at the configured interval once over budget',
+    );
+
+    // Still published, just later: slower is a trade-off, dropped is a bug.
+    await waitFor(() => published.some((s) => s.state === -4242.4), { timeout: 5000 });
   });
 
   it('serves a live device from its buffer instead of polling it over HTTP', async () => {

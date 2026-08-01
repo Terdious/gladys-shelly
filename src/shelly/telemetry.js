@@ -17,14 +17,19 @@
 // per device and split into two lanes:
 //   - the REAL-TIME lane (`realtime: true` in features.js, plus the
 //     controllable states) flushes at the configured `realtime_interval`,
-//     5 s by default. It carries what a human feels (a relay flipping on the
-//     wall) and what a control scene reacts to (total active power steering a
-//     battery, per-relay power). It is deliberately NARROW: at 5 s there are
-//     12 windows per minute, so the whole integration can afford roughly 25
-//     real-time features before it starts losing states to the rate limit;
-//   - everything else (per-phase detail, voltages, currents, energy counters,
+//     5 s by default. It carries every instantaneous POWER value and every
+//     on/off state: what a human feels (a relay flipping on the wall) and what
+//     a control scene reacts to (total and per-phase power steering a battery
+//     or shedding a load);
+//   - everything else (voltages, currents, apparent power, energy counters,
 //     temperatures) rides the normal refresh interval, but is served from the
 //     freshest pushed value instead of an HTTP round trip.
+//
+// The lane is not sized by a fixed feature list, because the same list costs
+// nothing on one Pro 3EM and blows the budget on ten. It MEASURES what it
+// publishes and stretches its own interval when the fleet is big enough to
+// need it (see `effectiveRealtimeSeconds`), which is the only way a value that
+// never changes can be free while a value that always changes is not.
 // `recordPublishRate` watches that budget and warns before states start being
 // dropped, because silent loss would be indistinguishable from a bug.
 //
@@ -50,20 +55,38 @@ const STATE_BATCH_SIZE = 100;
 
 /**
  * The host API rate-limits states at 300 per minute per integration. The
- * real-time lane spends that budget deliberately, so it is kept to the handful
- * of values a control scene actually reacts to — `realtime: true` in
- * features.js (total active power, per-relay power) plus the controllable
- * states. Everything else (per-phase detail, energy counters, temperatures)
- * rides the normal refresh interval.
+ * real-time lane spends that budget on the values a human watches and a scene
+ * reacts to — `realtime: true` in features.js (total and per-phase active
+ * power, per-relay power) plus the controllable states. Everything else
+ * (voltages, currents, energy counters, temperatures) rides the normal refresh
+ * interval.
  *
- * Budget arithmetic, worth keeping in mind before widening the lane: at a 5 s
- * cadence there are 12 windows per minute, so the whole integration can afford
- * about 25 real-time features before it starts losing states to the limit.
+ * Only real CHANGES are published, so the cost of the lane is the number of
+ * values that actually move, not the number declared — which is why the
+ * cadence is derived from the measured rate rather than from the feature
+ * count. See `REALTIME_SAFE_RATE`.
  */
 const STATE_RATE_LIMIT_PER_MINUTE = 300;
 
 /** Warn once per minute when the real-time lane gets close to the cap. */
 const RATE_WARNING_THRESHOLD = 0.8;
+
+/**
+ * States per minute the real-time lane is allowed to reach before it slows
+ * itself down, out of the 300/minute the host API accepts. The margin below the
+ * cap is what the refresh cycle spends on everything the lane does not carry.
+ *
+ * This exists because the lane is sized by the fleet, not by the configuration:
+ * one Pro 3EM feeds 4 fast values, ten feed 40, and the interval that is right
+ * for the first is wrong for the second. Rather than ask the user to work that
+ * out, the lane MEASURES what it actually publishes and stretches its own
+ * interval when the budget gets tight — a value that never changes costs
+ * nothing, so the real cost cannot be derived from the device count alone.
+ */
+const REALTIME_SAFE_RATE = 240;
+
+/** Longest the lane will stretch itself to, in seconds, however big the fleet. */
+const MAX_REALTIME_SECONDS = 60;
 
 /** How often a live (pushing) device is still polled, as a safety net, in ms. */
 const LIVE_SAFETY_NET_MS = 5 * 60 * 1000;
@@ -117,6 +140,8 @@ export function createTelemetry({
   /** Real-time states published since the last summary, and when it was logged. */
   let realtimePublished = 0;
   let lastRealtimeSummaryAt = 0;
+  /** Last cadence the lane announced, so a change is logged once and not every flush. */
+  let lastAnnouncedRealtimeSeconds = null;
 
   let timer = null;
   let fastFlushTimer = null;
@@ -274,6 +299,44 @@ export function createTelemetry({
   }
 
   /**
+   * How many states were published in the last minute, across both lanes.
+   * @param {number} timestamp current time
+   * @returns {number} the rolling one-minute count
+   */
+  function currentPublishRate(timestamp) {
+    const windowStart = timestamp - 60000;
+    return publishTimestamps.filter((at) => at > windowStart).length;
+  }
+
+  /**
+   * The cadence the real-time lane will actually run at.
+   *
+   * The configured interval is a FLOOR, not a promise: it is what the lane runs
+   * at whenever the budget allows, and it does on any ordinary installation. On
+   * a fleet large enough to spend more than `REALTIME_SAFE_RATE` states a
+   * minute, the lane stretches itself in proportion — publishing half as often
+   * costs half as much, so one step converges. Losing states to the host API
+   * would be worse than a slower lane: a dropped state is invisible, a slower
+   * one is merely slower, and it is announced.
+   *
+   * @returns {number} the interval in seconds, or 0 when the lane is disabled
+   */
+  function effectiveRealtimeSeconds() {
+    const { realtimeSeconds } = getConfig();
+    if (!realtimeSeconds) {
+      return 0;
+    }
+    const rate = currentPublishRate(now());
+    if (rate <= REALTIME_SAFE_RATE) {
+      return realtimeSeconds;
+    }
+    return Math.min(
+      Math.ceil(realtimeSeconds * (rate / REALTIME_SAFE_RATE)),
+      MAX_REALTIME_SECONDS,
+    );
+  }
+
+  /**
    * Publish a batch of states, remembering only what actually went through.
    * @param {Array<{device_feature_external_id: string, state: number}>} states states to publish
    * @param {number} timestamp current time
@@ -335,27 +398,39 @@ export function createTelemetry({
     if (lastRealtimeSummaryAt === 0) {
       lastRealtimeSummaryAt = timestamp;
     } else if (timestamp - lastRealtimeSummaryAt >= 60000) {
-      const { realtimeSeconds } = getConfig();
+      const realtimeSeconds = effectiveRealtimeSeconds();
       logger.info(
         `Real-time lane: ${realtimePublished} state(s) published in the last minute ` +
           `(every ${realtimeSeconds}s, from ${wsHub.liveCount()} WebSocket and ` +
-          `${mqttSeeded.size} MQTT device(s))`,
+          `${mqttSeeded.size} MQTT device(s)); ${currentPublishRate(timestamp)}/` +
+          `${STATE_RATE_LIMIT_PER_MINUTE} states/min of the Gladys budget used`,
       );
       realtimePublished = 0;
       lastRealtimeSummaryAt = timestamp;
     }
   }
 
-  /** Arm the debounce that flushes the real-time lane at the configured cadence. */
+  /** Arm the debounce that flushes the real-time lane at the current cadence. */
   function scheduleFastFlush() {
     if (fastFlushTimer) {
       return;
     }
-    const { realtimeSeconds } = getConfig();
+    const realtimeSeconds = effectiveRealtimeSeconds();
     if (!realtimeSeconds) {
       // Lane disabled: those values ride the normal refresh cycle like the rest.
       return;
     }
+    if (lastAnnouncedRealtimeSeconds !== null && realtimeSeconds !== lastAnnouncedRealtimeSeconds) {
+      const configured = getConfig().realtimeSeconds;
+      logger.info(
+        realtimeSeconds > configured
+          ? `Real-time lane slowed to ${realtimeSeconds}s (you asked for ${configured}s): the fleet ` +
+              `is publishing more than ${REALTIME_SAFE_RATE} states/min and the Gladys limit is ` +
+              `${STATE_RATE_LIMIT_PER_MINUTE}/min. Create fewer devices to get back to ${configured}s.`
+          : `Real-time lane back to ${realtimeSeconds}s`,
+      );
+    }
+    lastAnnouncedRealtimeSeconds = realtimeSeconds;
     fastFlushTimer = setTimeout(() => {
       flushFast().catch((err) => logger.warn(`Real-time flush failed: ${err.message}`));
     }, realtimeSeconds * 1000);

@@ -80,7 +80,7 @@ function switchSpecs(id) {
     {
       key: `${prefix}:power`,
       // Real-time lane: the value a control scene reacts to (battery steering,
-      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      // load shedding). See STATE_RATE_LIMIT_PER_MINUTE in telemetry.js.
       realtime: true,
       name: 'Power',
       category: DEVICE_FEATURE_CATEGORIES.SWITCH,
@@ -149,6 +149,11 @@ function emSpecs(id) {
   const perPhase = EM_PHASES.flatMap(({ prefix: p, label }) => [
     {
       key: `${prefix}:${label}_active_power`,
+      // Real-time lane: on a three-phase meter the per-phase power is what a
+      // human actually watches, and what a per-phase load-shedding scene reacts
+      // to. Leaving it on the 30 s cycle while the total refreshes every 5 s is
+      // what made the same device look fast and slow at the same time.
+      realtime: true,
       name: `${label.toUpperCase()} active power`,
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
@@ -198,7 +203,7 @@ function emSpecs(id) {
     {
       key: `${prefix}:total_active_power`,
       // Real-time lane: the value a control scene reacts to (battery steering,
-      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      // load shedding). See STATE_RATE_LIMIT_PER_MINUTE in telemetry.js.
       realtime: true,
       name: 'Total active power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
@@ -321,7 +326,7 @@ function em1Specs(id) {
     {
       key: `${prefix}:active_power`,
       // Real-time lane: the value a control scene reacts to (battery steering,
-      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      // load shedding). See STATE_RATE_LIMIT_PER_MINUTE in telemetry.js.
       realtime: true,
       name: 'Active power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
@@ -414,7 +419,7 @@ function pm1Specs(id) {
     {
       key: `${prefix}:active_power`,
       // Real-time lane: the value a control scene reacts to (battery steering,
-      // load shedding). See REALTIME_TIER in telemetry.js for the budget.
+      // load shedding). See STATE_RATE_LIMIT_PER_MINUTE in telemetry.js.
       realtime: true,
       name: 'Active power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,

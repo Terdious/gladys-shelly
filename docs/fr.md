@@ -292,33 +292,44 @@ Une clé valide sur le mauvais serveur est rejetée.
 appareils les poussent vers Gladys par WebSocket, sans attendre le prochain
 rafraîchissement.
 
-**Les valeurs de pilotage** — puissance totale d'un compteur, puissance de
-chaque relais — sont sur une **voie temps réel** dédiée, publiées toutes les
-5 secondes par défaut (réglable de 1 s à 30 s, ou désactivable). C'est ce qu'il
-faut pour qu'une scène réagisse : piloter une batterie, délester une charge.
+**Toutes les puissances instantanées** — puissance totale d'un compteur,
+puissance de **chaque phase** d'un triphasé, puissance de chaque relais — sont
+sur une **voie temps réel** dédiée, publiées toutes les 5 secondes par défaut
+(réglable de 1 s à 30 s, ou désactivable). C'est ce qu'il faut pour qu'une scène
+réagisse : piloter une batterie, délester une charge.
 
-**Le reste des mesures** (détail par phase, tensions, courants, compteurs
+**Le reste des mesures** (tensions, courants, puissances apparentes, compteurs
 d'énergie, températures) suit l'intervalle de rafraîchissement que vous avez
-configuré. C'est volontaire, et c'est une
-contrainte dure plutôt qu'un choix : Gladys limite une intégration à **300
-états par minute**, alors qu'un seul Pro 3EM pousse environ **une mise à jour
-par seconde sur ~25 mesures**. Tout transmettre tel quel ferait ~900 états par
-minute — trois fois le plafond. Les mesures sont donc regroupées : Gladys reçoit
-la valeur _la plus fraîche_ à votre cadence, sans aller-retour HTTP.
+configuré. C'est volontaire, et c'est une contrainte dure plutôt qu'un choix :
+Gladys limite une intégration à **300 états par minute**, alors qu'un seul
+Pro 3EM pousse environ **une mise à jour par seconde sur ~25 mesures**. Tout
+transmettre tel quel ferait ~900 états par minute — trois fois le plafond. Les
+mesures sont donc regroupées : Gladys reçoit la valeur _la plus fraîche_ à votre
+cadence, sans aller-retour HTTP.
 
 L'intégration ne publie par ailleurs que les valeurs **qui ont changé** ; une
 valeur stable est republiée toutes les 30 minutes pour ne pas paraître morte.
 
-**Pourquoi la voie temps réel reste étroite.** Gladys accepte **300 états par
-minute** pour une intégration. À 5 secondes, ça fait 12 fenêtres par minute,
-donc environ **25 mesures temps réel** pour toute l'intégration. Un seul
-Pro 3EM porte ~16 mesures instantanées : tout y mettre ferait ~576 états/minute
-avec trois appareils, soit le double du plafond. La voie est donc limitée aux
-valeurs auxquelles une scène réagit réellement.
+**Ce qui se passe si votre parc est trop gros pour votre cadence.** Le coût de
+la voie temps réel dépend du parc, pas du réglage : une valeur qui ne bouge
+jamais ne coûte rien, une valeur qui bouge sans arrêt coûte une place à chaque
+fenêtre. L'intégration **mesure** donc ce qu'elle publie réellement et allonge
+son propre intervalle quand elle dépasse 240 états par minute — et elle le dit :
 
-L'intégration surveille ce budget : si elle s'approche du plafond, elle
-l'écrit dans les logs en nommant le réglage à augmenter, plutôt que de laisser
-des états disparaître sans explication.
+```
+Real-time lane slowed to 10s (you asked for 5s): the fleet is publishing more
+than 240 states/min and the Gladys limit is 300/min.
+```
+
+Votre réglage est un **plancher** : la voie y revient d'elle-même dès que le
+budget le permet. Ralentir se voit, un état refusé par Gladys ne se verrait pas.
+
+Chaque minute, une ligne récapitule où vous en êtes :
+
+```
+Real-time lane: 54 state(s) published in the last minute (every 5s, from
+4 WebSocket and 15 MQTT device(s)); 61/300 states/min of the Gladys budget used
+```
 
 **Comment vérifier que le temps réel fonctionne vraiment.** Dans les logs du
 conteneur, deux lignes différentes par appareil :
