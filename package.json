@@ -17,10 +17,12 @@
   },
   "dependencies": {
     "@gladysassistant/integration-sdk": "^0.9.0",
+    "mqtt": "^5.15.2",
     "ws": "^8.21.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "aedes": "^1.1.1",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.7.0",

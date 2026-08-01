@@ -6,9 +6,9 @@ prises connectées et compteurs d'énergie.
 Elle parle **directement à vos appareils sur votre réseau local** (protocole RPC
 Gen2+) et les laisse **pousser leurs changements en temps réel** : un relais
 basculé au mur apparaît dans Gladys en une seconde environ. Elle peut basculer
-sur le **Shelly Cloud** quand un appareil n'est pas joignable localement. Aucun
-broker MQTT, aucun compte obligatoire : une installation 100 % locale
-fonctionne avec un formulaire **entièrement vide**.
+sur **MQTT** puis sur le **Shelly Cloud** quand un appareil n'est pas joignable
+localement. Rien n'est obligatoire : une installation 100 % locale fonctionne
+avec un formulaire **entièrement vide**.
 
 > **Générations supportées :** Gen2 et suivantes — Shelly **Plus**, **Pro**,
 > **Mini**, **Gen3**, **Gen4** — **ainsi que les Gen1** (Shelly 1, 1PM, 2.5,
@@ -20,9 +20,10 @@ fonctionne avec un formulaire **entièrement vide**.
 > fonctionnalités qu'un Pro 3EM Gen2, avec les mêmes noms. Vos tableaux de bord
 > et vos scènes ne font pas la différence.
 >
-> Une limite à connaître : les Gen1 n'ont **pas de temps réel**. Leur canal de
-> push (CoIoT) est du multicast, qui n'atteint jamais un conteneur Docker ;
-> leurs valeurs suivent donc l'intervalle de rafraîchissement.
+> Une limite à connaître : en local, les Gen1 n'ont **pas de temps réel**. Leur
+> canal de push (CoIoT) est du multicast, qui n'atteint jamais un conteneur
+> Docker, donc leurs valeurs suivent l'intervalle de rafraîchissement. **En
+> MQTT, si**, comme les Gen2+.
 
 ---
 
@@ -81,10 +82,38 @@ réseau, coupure Wi-Fi temporaire).
 > Shelly. Traitez-la comme un mot de passe. Elle est stockée chiffrée par Gladys
 > et n'est jamais affichée en clair.
 
-Quand les deux canaux sont configurés, Gladys affiche un interrupteur standard
+Quand plusieurs canaux sont configurés, Gladys affiche un interrupteur standard
 **« Préférer la connexion locale »** (activé par défaut). C'est une préférence :
 l'intégration l'applique quand elle le peut, et affiche la réalité appareil par
 appareil grâce aux **badges de transport** (voir plus bas).
+
+### MQTT (recommandé au-delà de quelques appareils)
+
+À remplir si des appareils ne sont pas découverts, ou si vous voulez du temps
+réel sur des Gen1.
+
+**Sur chaque Shelly** : interface web de l'appareil → **Settings → MQTT** →
+
+| Réglage                                | Valeur                                                                 |
+| -------------------------------------- | ---------------------------------------------------------------------- |
+| **Enable**                             | coché                                                                  |
+| **Server**                             | l'adresse de votre broker, ex. `10.5.0.50:1883`                        |
+| **Username / Password**                | ceux de votre broker, si protégé                                       |
+| **Enable 'MQTT Control'**              | coché — c'est ce qui autorise Gladys à **piloter** l'appareil par MQTT |
+| **RPC status notifications over MQTT** | coché — c'est ce qui envoie les valeurs en temps réel                  |
+| **MQTT prefix**                        | laissez la valeur par défaut (l'identifiant de l'appareil)             |
+
+**Dans Gladys** : cochez **Activer MQTT** et saisissez la même adresse de
+broker, plus les identifiants si nécessaire.
+
+Le préfixe est libre, y compris avec des `/` : l'intégration ne s'y fie pas.
+Elle identifie chaque appareil par le champ `src` de ses messages, qui est
+l'identifiant matériel — renommer un préfixe ne casse donc rien.
+
+> 💡 **Les Gen1 aussi.** Ils publient dans un dialecte totalement différent
+> (`shellies/<id>/emeter/0/power`, une valeur par topic, sans JSON), que
+> l'intégration comprend également. Un 3EM Gen1 sur MQTT remonte donc en temps
+> réel, contrairement au même appareil en local.
 
 ### Avancé
 
@@ -106,17 +135,45 @@ au-delà de 3 ou 4 compteurs d'énergie, restez à 30 secondes ou plus.
 Allez dans l'onglet **Découverte** de l'intégration et cliquez sur
 **Rechercher**.
 
-Gladys interroge trois sources et les fusionne :
+Gladys interroge quatre sources et les fusionne :
 
-1. **mDNS** — vos Shelly s'annoncent sur le réseau (service `_shelly._tcp`). Le
-   cœur de Gladys écoute pour le compte de l'intégration : les conteneurs sont
-   sur un réseau bridge et ne reçoivent jamais le trafic multicast.
-2. **Les adresses que vous avez saisies** à l'étape 2.
-3. **Les adresses des appareils déjà créés** dans Gladys — un nouveau scan ne
-   perd jamais un appareil dont l'annonce mDNS a été ratée.
+1. **mDNS** — vos Shelly s'annoncent sur le réseau (services `_shelly._tcp` pour
+   les Gen2+, `_http._tcp` pour les Gen1). Le cœur de Gladys écoute pour le
+   compte de l'intégration : les conteneurs sont sur un réseau bridge et ne
+   reçoivent jamais le trafic multicast.
+2. **Votre broker MQTT**, si vous l'avez configuré — voir ci-dessous.
+3. **Les adresses que vous avez saisies** à l'étape 2.
+4. **Les adresses déjà vues**, qu'il s'agisse d'appareils créés dans Gladys ou
+   simplement aperçus lors d'un scan précédent. Une adresse ayant répondu une
+   fois est re-interrogée à chaque scan : un appareil trouvé une fois n'est
+   jamais reperdu.
 
 Chaque adresse est ensuite interrogée en **unicast** (qui, lui, traverse le
 réseau bridge). Cliquez sur **Créer** pour ajouter un appareil à Gladys.
+
+### ⚠️ Un appareil manque à l'appel ? Passez par MQTT
+
+**C'est le point le plus important de cette page si vous avez plus de quelques
+appareils.**
+
+Le mDNS fonctionne par courtes rafales multicast. Sur une installation d'une
+quinzaine de Shelly, un même scan remonte 19 annonces, le suivant 27, et
+certains appareils **ne sont jamais annoncés** — alors qu'ils fonctionnent
+parfaitement et répondent en HTTP dès qu'on connaît leur adresse. Ce n'est ni
+une question de signal, ni de réglage sur l'appareil.
+
+Trois recours, du plus efficace au plus manuel :
+
+1. **Configurez MQTT** (section suivante). Un appareil qui publie sur votre
+   broker s'annonce **en permanence** : il n'y a plus de fenêtre à manquer. Il
+   est découvert, il remonte en temps réel, et il reste pilotable même
+   injoignable sur le réseau local. C'est le seul inventaire fiable au-delà de
+   quelques appareils.
+2. **Activez le Shelly Cloud.** Il ne découvre pas les appareils, mais il permet
+   de piloter et de lire ceux que Gladys connaît déjà quand le local tombe.
+3. **Saisissez les adresses IP à la main** dans « Adresses d'appareils
+   supplémentaires ». Efficace et immédiat, mais à refaire si un bail DHCP
+   change — réservez une IP fixe sur votre routeur dans ce cas.
 
 ### Un Shelly = un appareil Gladys
 

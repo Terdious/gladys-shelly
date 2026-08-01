@@ -332,6 +332,58 @@ export function forgetSeenHosts() {
 }
 
 /**
+ * Add the devices that publish to the MQTT broker but were not found locally.
+ *
+ * These need no IP address: `<prefix>/rpc` serves both the status read that
+ * builds their features and, later, the commands. That is the whole point —
+ * a device mDNS never announces is still fully usable this way.
+ *
+ * @param {object} params inputs
+ * @param {object} params.gladys the SDK instance
+ * @param {object} params.mqttHub the MQTT hub
+ * @param {Map<string, object>} params.found devices already found, keyed by external id
+ * @returns {Promise<number>} how many devices MQTT added
+ */
+async function probeMqttDevices({ gladys, mqttHub, found }) {
+  let added = 0;
+  for (const { shellyId } of mqttHub.devices()) {
+    const externalIds = gladys.externalIds(DEVICE_TYPE, shellyId);
+    if (found.has(externalIds.device)) {
+      continue;
+    }
+    try {
+      const [status, deviceConfig, info] = await Promise.all([
+        mqttHub.request(shellyId, 'Shelly.GetStatus'),
+        mqttHub.request(shellyId, 'Shelly.GetConfig').catch(() => undefined),
+        mqttHub.request(shellyId, 'Shelly.GetDeviceInfo').catch(() => undefined),
+      ]);
+      if (!status) {
+        continue;
+      }
+      found.set(
+        externalIds.device,
+        buildDevice({
+          info: { id: shellyId, model: info?.model, gen: info?.gen ?? 2, name: info?.name },
+          status,
+          config: deviceConfig,
+          // No host on purpose: this device is reached through the broker. A
+          // later local discovery fills the address in and it upgrades itself.
+          host: undefined,
+          externalIds,
+        }),
+      );
+      added += 1;
+    } catch (err) {
+      logger.info(
+        `Discovery: ${shellyId} publishes on MQTT but did not answer a request ` +
+          `(${err.message}) — tick "Enable MQTT Control" on the device to use it this way`,
+      );
+    }
+  }
+  return added;
+}
+
+/**
  * Run a full discovery and return the devices found.
  *
  * @param {object} params discovery inputs
@@ -343,6 +395,7 @@ export function forgetSeenHosts() {
  * @param {(devices: object[]) => Promise<void>|void} [params.onProgress] called
  *   with the devices found so far, after each browse round, so the Discovery
  *   page can fill up while the scan is still running
+ * @param {object} [params.mqttHub] the MQTT hub, used as a fourth source
  * @returns {Promise<object[]>} the discovered devices
  */
 export async function discoverDevices({
@@ -352,6 +405,7 @@ export async function discoverDevices({
   knownDevices = [],
   fetchImpl = fetch,
   onProgress,
+  mqttHub,
 }) {
   const knownHosts = knownDevices.map((device) => readHost(device)).filter(Boolean);
   const rememberedHosts = [...seenShellyHosts];
@@ -434,6 +488,18 @@ export async function discoverDevices({
         logger.info(`Discovery: round ${round + 1} found ${added} new address(es)`);
         await reportProgress();
       }
+    }
+  }
+
+  // --- MQTT: the source with no discovery window to miss ---------------------
+  // A device that publishes to the broker announces itself continuously, so
+  // this catches exactly the devices mDNS keeps losing — and it needs no IP
+  // address at all, since both reads and commands go through the broker.
+  if (mqttHub) {
+    const overMqtt = await probeMqttDevices({ gladys, mqttHub, found: byExternalId });
+    if (overMqtt > 0) {
+      logger.info(`Discovery: ${overMqtt} device(s) found over MQTT that mDNS did not announce`);
+      await reportProgress();
     }
   }
 

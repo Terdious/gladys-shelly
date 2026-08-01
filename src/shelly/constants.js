@@ -168,6 +168,10 @@ export const TRANSPORT_MESSAGES = {
     en: 'Device unreachable on the local network, falling back to the Shelly Cloud.',
     fr: 'Appareil injoignable sur le réseau local, bascule sur le Shelly Cloud.',
   },
+  MQTT_FALLBACK: {
+    en: 'Device unreachable on the local network, served through your MQTT broker.',
+    fr: 'Appareil injoignable sur le réseau local, servi via votre broker MQTT.',
+  },
   AUTH_FAILED: {
     en: 'The device refused the password. Check it in the integration configuration.',
     fr: "L'appareil a refusé le mot de passe. Vérifiez-le dans la configuration de l'intégration.",

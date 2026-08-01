@@ -89,6 +89,22 @@ export function normalizeConfig(rawConfig = {}) {
             .replace(/\/+$/, '')
         : '',
     cloudAuthKey: typeof config.cloud_auth_key === 'string' ? config.cloud_auth_key.trim() : '',
+    // MQTT: a third transport, and on a large fleet the only reliable
+    // inventory — a device that publishes announces itself continuously, with
+    // no discovery window to miss.
+    mqttEnabled: toBoolean(config.mqtt_enabled, false),
+    // Accepts `10.5.0.50:1883`, `mqtt://10.5.0.50` or a bare host: users paste
+    // whatever the Shelly UI showed them.
+    mqttServer:
+      typeof config.mqtt_server === 'string'
+        ? config.mqtt_server
+            .trim()
+            .replace(/^mqtts?:\/\//i, '')
+            .replace(/\/+$/, '')
+        : '',
+    mqttUsername: typeof config.mqtt_username === 'string' ? config.mqtt_username.trim() : '',
+    // Never trim a password: a trailing space can be part of it.
+    mqttPassword: typeof config.mqtt_password === 'string' ? config.mqtt_password : '',
     refreshSeconds: Number.isFinite(refreshSeconds)
       ? Math.min(Math.max(refreshSeconds, MIN_REFRESH_SECONDS), MAX_REFRESH_SECONDS)
       : DEFAULT_REFRESH_SECONDS,

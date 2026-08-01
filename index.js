@@ -59,7 +59,18 @@ export function setupIntegration(gladys, { fetchImpl = fetch } = {}) {
   let config = normalizeConfig();
 
   const cloud = createCloudClient({ getConfig: () => config, fetchImpl });
-  const client = createShellyClient({ getConfig: () => config, cloud, fetchImpl });
+  // The MQTT hub is owned by telemetry (it feeds the push buffer), but the
+  // transport router needs it too, as the step between local and cloud. The
+  // indirection keeps a single hub rather than two connections to one broker.
+  const client = createShellyClient({
+    getConfig: () => config,
+    cloud,
+    mqttHub: {
+      knows: (id) => telemetry.mqttHub.knows(id),
+      request: (...args) => telemetry.mqttHub.request(...args),
+    },
+    fetchImpl,
+  });
   const telemetry = createTelemetry({
     gladys,
     client,

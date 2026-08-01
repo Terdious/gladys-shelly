@@ -42,6 +42,7 @@ import { DEVICE_TYPE, POLL_CONCURRENCY, STATE_KEEP_ALIVE_MS } from './constants.
 import { buildStates } from './deviceMapping.js';
 import { buildFeatureSpecs } from './features.js';
 import { buildTargets, discoverDevices } from './discovery.js';
+import { createMqttHub } from './mqttHub.js';
 import { createWsHub } from './wsHub.js';
 
 /** Maximum number of states accepted by one POST /state (host API limit). */
@@ -100,6 +101,7 @@ export function createTelemetry({
   fetchImpl = fetch,
   now = Date.now,
   WebSocketImpl,
+  mqttImpl,
 }) {
   /** Last published value per feature external id, with its publication time. */
   const lastPublished = new Map();
@@ -128,6 +130,15 @@ export function createTelemetry({
       }
     },
     ...(WebSocketImpl ? { WebSocketImpl } : {}),
+  });
+
+  // MQTT feeds the SAME buffer as the WebSocket: `<prefix>/events/rpc` carries
+  // identical `NotifyStatus` frames, and the Gen1 dialect is normalized into
+  // the same component shape before it gets here. One push path, three sources.
+  const mqttHub = createMqttHub({
+    getConfig,
+    onStatus: (shellyId, status) => bufferPushedStatus(shellyId, status),
+    ...(mqttImpl ? { mqttImpl } : {}),
   });
 
   /**
@@ -320,7 +331,10 @@ export function createTelemetry({
   async function readDevice(target, timestamp) {
     const external_id = target.device.external_id;
     const lastPoll = lastPolledAt.get(target.shellyId) || 0;
-    const isLive = wsHub.isLive(target.shellyId);
+    // Live over EITHER push channel. A Gen1 device has no WebSocket at all, so
+    // MQTT is the only way it can ever be live — and a Gen2 device the local
+    // network cannot reach may still be pushing to the broker.
+    const isLive = wsHub.isLive(target.shellyId) || mqttHub.knows(target.shellyId);
 
     // A live device is served from its buffer, EXCEPT once every safety-net
     // interval: a socket can stay open and silent (device wedged, firmware
@@ -452,6 +466,7 @@ export function createTelemetry({
       config,
       knownDevices,
       fetchImpl,
+      mqttHub,
       onProgress: (partial) => gladys.publishDiscoveredDevices(partial),
     });
     await gladys.publishDiscoveredDevices(devices);
@@ -484,6 +499,7 @@ export function createTelemetry({
       `Telemetry started — refreshing every ${refreshSeconds}s, real-time lane ` +
         (realtimeSeconds ? `every ${realtimeSeconds}s` : 'disabled'),
     );
+    mqttHub.start();
     // Run one cycle immediately so the user does not wait a full interval
     // after a restart or a configuration change.
     safeCycle();
@@ -505,6 +521,7 @@ export function createTelemetry({
       fastFlushTimer = null;
     }
     wsHub.stop();
+    mqttHub.stop();
     pushBuffer.clear();
   }
 
@@ -516,6 +533,7 @@ export function createTelemetry({
     resetDedup,
     // Exposed for the tests and the e2e wiring.
     wsHub,
+    mqttHub,
     flushFast,
   };
 }

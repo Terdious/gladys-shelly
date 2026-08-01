@@ -38,11 +38,18 @@ import { createRpcClient, ShellyAuthError, ShellyConnectionError } from './rpc.j
  * @param {object} options router options
  * @param {() => object} options.getConfig accessor to the current normalized config
  * @param {object} options.cloud the Shelly Cloud client
+ * @param {object} [options.mqttHub] the MQTT hub, tried between local and cloud
  * @param {typeof fetch} [options.fetchImpl] fetch implementation (tests)
  * @param {() => number} [options.now] clock (tests)
  * @returns {object} the router
  */
-export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = Date.now }) {
+export function createShellyClient({
+  getConfig,
+  cloud,
+  mqttHub,
+  fetchImpl = fetch,
+  now = Date.now,
+}) {
   /** @type {Map<string, {client: object, host: string, username: string, password: string}>} */
   const rpcClients = new Map();
   /** Per-device local health, so an unreachable device is not retried every cycle. */
@@ -206,6 +213,24 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = 
       localError = attempt.error;
     }
 
+    // MQTT sits BETWEEN local and cloud, which is the order the user asked for
+    // and the order that makes sense: it is still their own broker on their own
+    // network, so it is neither as direct as local nor as remote as the cloud.
+    if (mqttHub && mqttHub.knows(shellyId)) {
+      try {
+        const status = await mqttHub.request(shellyId, 'Shelly.GetStatus');
+        if (status) {
+          return {
+            status,
+            transport: DEVICE_TRANSPORTS.LOCAL,
+            ...(localFirst ? { degraded: true, message: TRANSPORT_MESSAGES.MQTT_FALLBACK } : {}),
+          };
+        }
+      } catch (mqttError) {
+        logger.debug(`${shellyId}: MQTT read failed (${mqttError.message})`);
+      }
+    }
+
     if (cloudUsable) {
       try {
         const status = await cloud.getStatus(shellyId);
@@ -269,6 +294,15 @@ export function createShellyClient({ getConfig, cloud, fetchImpl = fetch, now = 
         return DEVICE_TRANSPORTS.LOCAL;
       }
       localError = attempt.error;
+    }
+
+    if (mqttHub && mqttHub.knows(shellyId)) {
+      try {
+        await mqttHub.request(shellyId, 'Switch.Set', { id: channel, on });
+        return DEVICE_TRANSPORTS.LOCAL;
+      } catch (mqttError) {
+        logger.debug(`${shellyId}: MQTT command failed (${mqttError.message})`);
+      }
     }
 
     if (cloudUsable) {

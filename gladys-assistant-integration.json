@@ -153,6 +153,84 @@
       "required": false
     },
     {
+      "key": "section_mqtt",
+      "type": "section",
+      "label": {
+        "en": "MQTT (recommended for large installations)",
+        "fr": "MQTT (recommandé pour les grandes installations)"
+      },
+      "description": {
+        "en": "Optional, and the most reliable way to reach a large fleet. Shelly devices announce themselves over mDNS in short multicast bursts that are easily missed, so on an installation with many devices some are simply never discovered. A device configured to publish to your MQTT broker announces itself continuously instead: it is discovered, it reports in real time, and it can still be controlled when it is unreachable on the local network. Configure the broker in each Shelly: Settings, then MQTT, then tick Enable, Enable MQTT Control and RPC status notifications over MQTT.",
+        "fr": "Optionnel, et le moyen le plus fiable de joindre une grande installation. Les Shelly s'annoncent en mDNS par courtes rafales multicast faciles à manquer : au-delà de quelques appareils, certains ne sont jamais découverts. Un appareil configuré pour publier sur votre broker MQTT s'annonce en permanence : il est découvert, il remonte en temps réel, et il reste pilotable même injoignable sur le réseau local. Configurez le broker dans chaque Shelly : Réglages, puis MQTT, puis cochez Enable, Enable MQTT Control et RPC status notifications over MQTT."
+      },
+      "links": [
+        {
+          "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Mqtt",
+          "label": {
+            "en": "Shelly MQTT documentation",
+            "fr": "Documentation MQTT de Shelly"
+          }
+        }
+      ]
+    },
+    {
+      "key": "mqtt_enabled",
+      "type": "boolean",
+      "label": {
+        "en": "Enable MQTT",
+        "fr": "Activer MQTT"
+      },
+      "description": {
+        "en": "Listen to your MQTT broker to discover, read and control the Shelly devices that publish to it.",
+        "fr": "Écouter votre broker MQTT pour découvrir, lire et piloter les Shelly qui y publient."
+      },
+      "required": false,
+      "default": false
+    },
+    {
+      "key": "mqtt_server",
+      "type": "string",
+      "label": {
+        "en": "MQTT broker address",
+        "fr": "Adresse du broker MQTT"
+      },
+      "description": {
+        "en": "Host and port of your broker, exactly as entered in the Server field of your Shelly devices. The port defaults to 1883.",
+        "fr": "Hôte et port de votre broker, tels que saisis dans le champ Server de vos Shelly. Le port vaut 1883 par défaut."
+      },
+      "placeholder": {
+        "en": "10.5.0.50:1883",
+        "fr": "10.5.0.50:1883"
+      },
+      "required": false
+    },
+    {
+      "key": "mqtt_username",
+      "type": "string",
+      "label": {
+        "en": "MQTT username",
+        "fr": "Nom d'utilisateur MQTT"
+      },
+      "description": {
+        "en": "Only if your broker requires authentication. Use the same credentials you set in your Shelly devices.",
+        "fr": "Uniquement si votre broker exige une authentification. Utilisez les mêmes identifiants que dans vos Shelly."
+      },
+      "required": false
+    },
+    {
+      "key": "mqtt_password",
+      "type": "secret",
+      "label": {
+        "en": "MQTT password",
+        "fr": "Mot de passe MQTT"
+      },
+      "description": {
+        "en": "Only if your broker requires authentication.",
+        "fr": "Uniquement si votre broker exige une authentification."
+      },
+      "required": false
+    },
+    {
       "key": "section_advanced",
       "type": "section",
       "label": {
