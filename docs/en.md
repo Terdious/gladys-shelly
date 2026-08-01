@@ -280,32 +280,60 @@ server is rejected.
 **On/off states are near-instant** (about a second): your devices push them to
 Gladys over a WebSocket, without waiting for the next refresh.
 
-**Control values** — a meter's total power, each relay's power — ride a
-dedicated **real-time lane**, published every 5 seconds by default (adjustable
-from 1 s to 30 s, or disabled). That is what a scene needs to react: steering a
-battery, shedding a load.
+**Every instantaneous power** — a meter's total power, the power of **each
+phase** of a three-phase meter, each relay's power — rides a dedicated
+**real-time lane**, published every 5 seconds by default (adjustable from 1 s to
+30 s, or disabled). That is what a scene needs to react: steering a battery,
+shedding a load.
 
-**Every other measurement** (per-phase detail, voltages, currents, energy
-counters, temperatures) follows the refresh interval you configured. That is deliberate, and it is a hard constraint rather than a
-choice: Gladys limits an integration to **300 states per minute**, while a
-single Pro 3EM pushes about **one update per second across ~25 measurements**.
-Forwarding all of it verbatim would be roughly 900 states per minute — three
-times over the cap. So measurements are coalesced: Gladys gets the _freshest_
-value at your configured cadence, without an HTTP round trip.
+**Every other measurement** (voltages, currents, apparent power, energy
+counters, temperatures) follows the refresh interval you configured. That is
+deliberate, and it is a hard constraint rather than a choice: Gladys limits an
+integration to **300 states per minute**, while a single Pro 3EM pushes about
+**one update per second across ~25 measurements**. Forwarding all of it verbatim
+would be roughly 900 states per minute — three times over the cap. So
+measurements are coalesced: Gladys gets the _freshest_ value at your configured
+cadence, without an HTTP round trip.
 
 The integration also only publishes values that **changed**; a stable value is
 republished every 30 minutes so it does not look dead.
 
-**Why the real-time lane stays narrow.** Gladys accepts **300 states per
-minute** per integration. At 5 seconds that is 12 windows per minute, so about
-**25 real-time measurements** for the whole integration. A single Pro 3EM
-carries ~16 instantaneous measurements: putting them all on the lane would be
-~576 states/minute with three devices, twice the cap. The lane is therefore
-limited to the values a scene actually reacts to.
+**What happens when your fleet is too big for your cadence.** The cost of the
+lane comes from the fleet, not from the setting: a value that never moves is
+free, a value that always moves costs a slot in every window. So the integration
+**measures** what it actually publishes and stretches its own interval once it
+passes 240 states per minute — and it says so:
 
-The integration watches that budget: as it approaches the cap it says so in the
-logs, naming the setting to raise, rather than letting states vanish with no
-explanation.
+```
+Real-time lane slowed to 10s (you asked for 5s): the fleet is publishing
+612 states/min, and the limit is 300/min. It speeds back up on its own; create
+fewer devices, or raise the refresh interval, to stay at 5s.
+```
+
+Your setting is a **floor**: the lane returns to it on its own as soon as the
+budget allows. A slower lane is visible; a state Gladys refuses would not be.
+
+The controller is deliberately slow to change its mind: it slows down in
+proportion (a big installation reaches its cadence in one or two steps) but it
+speeds back up **one second at a time**, only once the rate has fallen well
+under the threshold, and never more than once a minute. The rate is measured
+over a rolling minute, so deciding faster would mean deciding on a number that
+still describes the previous cadence — and oscillating.
+
+If Gladys refuses states anyway, it says so by name, and the lane slows down
+immediately without waiting:
+
+```
+Gladys refused 38 state(s): over the 300/min limit. They are retried on the
+next cycle, and the real-time lane slows down.
+```
+
+Once a minute, one line tells you where you stand:
+
+```
+Real-time lane: 54 state(s) published in the last minute (every 5s, from
+4 WebSocket and 15 MQTT device(s)); 61/300 states/min of the Gladys budget used
+```
 
 **Checking that real time is actually working.** Two distinct lines per device
 in the container logs:

@@ -17,14 +17,19 @@
 // per device and split into two lanes:
 //   - the REAL-TIME lane (`realtime: true` in features.js, plus the
 //     controllable states) flushes at the configured `realtime_interval`,
-//     5 s by default. It carries what a human feels (a relay flipping on the
-//     wall) and what a control scene reacts to (total active power steering a
-//     battery, per-relay power). It is deliberately NARROW: at 5 s there are
-//     12 windows per minute, so the whole integration can afford roughly 25
-//     real-time features before it starts losing states to the rate limit;
-//   - everything else (per-phase detail, voltages, currents, energy counters,
+//     5 s by default. It carries every instantaneous POWER value and every
+//     on/off state: what a human feels (a relay flipping on the wall) and what
+//     a control scene reacts to (total and per-phase power steering a battery
+//     or shedding a load);
+//   - everything else (voltages, currents, apparent power, energy counters,
 //     temperatures) rides the normal refresh interval, but is served from the
 //     freshest pushed value instead of an HTTP round trip.
+//
+// The lane is not sized by a fixed feature list, because the same list costs
+// nothing on one Pro 3EM and blows the budget on ten. It MEASURES what it
+// publishes and stretches its own interval when the fleet is big enough to
+// need it (see `effectiveRealtimeSeconds`), which is the only way a value that
+// never changes can be free while a value that always changes is not.
 // `recordPublishRate` watches that budget and warns before states start being
 // dropped, because silent loss would be indistinguishable from a bug.
 //
@@ -50,20 +55,59 @@ const STATE_BATCH_SIZE = 100;
 
 /**
  * The host API rate-limits states at 300 per minute per integration. The
- * real-time lane spends that budget deliberately, so it is kept to the handful
- * of values a control scene actually reacts to — `realtime: true` in
- * features.js (total active power, per-relay power) plus the controllable
- * states. Everything else (per-phase detail, energy counters, temperatures)
- * rides the normal refresh interval.
+ * real-time lane spends that budget on the values a human watches and a scene
+ * reacts to — `realtime: true` in features.js (total and per-phase active
+ * power, per-relay power) plus the controllable states. Everything else
+ * (voltages, currents, energy counters, temperatures) rides the normal refresh
+ * interval.
  *
- * Budget arithmetic, worth keeping in mind before widening the lane: at a 5 s
- * cadence there are 12 windows per minute, so the whole integration can afford
- * about 25 real-time features before it starts losing states to the limit.
+ * Only real CHANGES are published, so the cost of the lane is the number of
+ * values that actually move, not the number declared — which is why the
+ * cadence is derived from the measured rate rather than from the feature
+ * count. See `REALTIME_SAFE_RATE`.
  */
 const STATE_RATE_LIMIT_PER_MINUTE = 300;
 
 /** Warn once per minute when the real-time lane gets close to the cap. */
 const RATE_WARNING_THRESHOLD = 0.8;
+
+/**
+ * States per minute the real-time lane is allowed to reach before it slows
+ * itself down, out of the 300/minute the host API accepts. The margin below the
+ * cap is what the refresh cycle spends on everything the lane does not carry.
+ *
+ * This exists because the lane is sized by the fleet, not by the configuration:
+ * one Pro 3EM feeds 4 fast values, ten feed 40, and the interval that is right
+ * for the first is wrong for the second. Rather than ask the user to work that
+ * out, the lane MEASURES what it actually publishes and stretches its own
+ * interval when the budget gets tight — a value that never changes costs
+ * nothing, so the real cost cannot be derived from the device count alone.
+ */
+const REALTIME_SAFE_RATE = 240;
+
+/**
+ * Rate the lane must fall back UNDER before it speeds up again.
+ *
+ * The gap with `REALTIME_SAFE_RATE` is deliberate. Slowing down lowers the rate
+ * just below the threshold, which — with a single threshold — immediately reads
+ * as "there is room again", and the lane flips back and forth every few
+ * seconds. The bench showed exactly that: 5 s, 6 s, 5 s, 6 s, four times a
+ * minute. A decision only holds if the measurement has room to settle on the
+ * other side of it.
+ */
+const REALTIME_RELAX_RATE = 200;
+
+/**
+ * Minimum time between two cadence changes, in ms.
+ *
+ * The rate is measured over a ROLLING MINUTE, so a change made now is only
+ * fully reflected in the measurement a minute later. Deciding faster than that
+ * means deciding on a number that still describes the previous cadence.
+ */
+const REALTIME_ADJUST_DWELL_MS = 60000;
+
+/** Longest the lane will stretch itself to, in seconds, however big the fleet. */
+const MAX_REALTIME_SECONDS = 60;
 
 /** How often a live (pushing) device is still polled, as a safety net, in ms. */
 const LIVE_SAFETY_NET_MS = 5 * 60 * 1000;
@@ -114,6 +158,14 @@ export function createTelemetry({
   /** Timestamps of the states published in the last minute, for the budget guard. */
   let publishTimestamps = [];
   let lastRateWarningAt = 0;
+  /** Real-time states published since the last summary, and when it was logged. */
+  let realtimePublished = 0;
+  let lastRealtimeSummaryAt = 0;
+  /** Cadence the lane is running at, and when it last changed. */
+  let currentRealtimeSeconds = null;
+  let lastCadenceChangeAt = 0;
+  /** When the host API last answered "Too Many Requests", the one authoritative signal. */
+  let rateLimitedAt = 0;
 
   let timer = null;
   let fastFlushTimer = null;
@@ -134,12 +186,51 @@ export function createTelemetry({
     ...(WebSocketImpl ? { WebSocketImpl } : {}),
   });
 
+  /**
+   * Devices whose FULL status we have obtained over MQTT.
+   *
+   * Publishing on MQTT is not the same as being readable over MQTT, and the
+   * difference decides whether this device can stop being polled. Pushed frames
+   * are PARTIAL — they carry what moved — so a device served from them alone
+   * never reports a value that does not change: an idle relay's power, a
+   * voltage that holds steady. Those features would sit on "no recent value"
+   * forever while their neighbours update, which is precisely what the bench
+   * saw.
+   *
+   * So a device only counts as live once it has answered `Shelly.GetStatus`
+   * over the broker, exactly like the WebSocket handshake. A device that
+   * publishes but has "MQTT Control" disabled keeps being polled over HTTP,
+   * which is the correct outcome rather than a silently starved one.
+   */
+  const mqttSeeded = new Set();
+
   // MQTT feeds the SAME buffer as the WebSocket: `<prefix>/events/rpc` carries
   // identical `NotifyStatus` frames, and the Gen1 dialect is normalized into
   // the same component shape before it gets here. One push path, three sources.
   const mqttHub = createMqttHub({
     getConfig,
     onStatus: (shellyId, status) => bufferPushedStatus(shellyId, status),
+    onDeviceSeen: (shellyId) => {
+      // The MQTT equivalent of the WebSocket handshake: one full snapshot, so
+      // every feature has a value before we rely on partial frames.
+      mqttHub
+        .request(shellyId, 'Shelly.GetStatus')
+        .then((status) => {
+          if (!status) {
+            return;
+          }
+          mqttSeeded.add(shellyId);
+          bufferPushedStatus(shellyId, status);
+          logger.info(`${shellyId}: full status read over MQTT — real-time updates flowing`);
+        })
+        .catch((err) => {
+          logger.info(
+            `${shellyId}: publishes on MQTT but did not answer a full status read ` +
+              `(${err.message}) — it stays on the polling path. Tick "Enable MQTT Control" ` +
+              'on the device to serve it from the broker.',
+          );
+        });
+    },
     ...(mqttImpl ? { mqttImpl } : {}),
   });
 
@@ -232,6 +323,91 @@ export function createTelemetry({
   }
 
   /**
+   * How many states were published in the last minute, across both lanes.
+   * @param {number} timestamp current time
+   * @returns {number} the rolling one-minute count
+   */
+  function currentPublishRate(timestamp) {
+    const windowStart = timestamp - 60000;
+    return publishTimestamps.filter((at) => at > windowStart).length;
+  }
+
+  /**
+   * The cadence the real-time lane runs at.
+   *
+   * The configured interval is a FLOOR, not a promise: it is what the lane runs
+   * at whenever the budget allows, and it does on any ordinary installation. On
+   * a fleet large enough to spend more than `REALTIME_SAFE_RATE` states a
+   * minute, the lane stretches itself. Losing states to the host API would be
+   * worse than a slower lane: a dropped state is invisible, a slower one is
+   * merely slower, and it is announced.
+   *
+   * Three rules keep this a controller rather than a coin flip:
+   *   - it reacts to overload IN PROPORTION (publishing half as often costs
+   *     half as much, so a big fleet reaches its cadence in one or two steps
+   *     instead of crawling there a second at a time);
+   *   - it speeds back up ONE SECOND AT A TIME, and only once the rate has
+   *     fallen well under the threshold (`REALTIME_RELAX_RATE`);
+   *   - it holds any decision for a full measurement window, because the rate
+   *     it reads is a rolling minute and a fresher number would still describe
+   *     the previous cadence.
+   * A "Too Many Requests" from the host bypasses the dwell: that is not our
+   * estimate of the budget, it is the budget itself talking.
+   *
+   * @returns {number} the interval in seconds, or 0 when the lane is disabled
+   */
+  function effectiveRealtimeSeconds() {
+    const { realtimeSeconds } = getConfig();
+    if (!realtimeSeconds) {
+      currentRealtimeSeconds = null;
+      return 0;
+    }
+    const timestamp = now();
+    // First call, or the user just changed the setting: honour it as-is. A
+    // configured value ABOVE the current one is never overridden — the user
+    // asking for a slower lane is not something to regulate around.
+    if (currentRealtimeSeconds === null || currentRealtimeSeconds < realtimeSeconds) {
+      currentRealtimeSeconds = realtimeSeconds;
+      lastCadenceChangeAt = timestamp;
+      return currentRealtimeSeconds;
+    }
+
+    const rate = currentPublishRate(timestamp);
+    const refused = rateLimitedAt > lastCadenceChangeAt;
+    if (!refused && timestamp - lastCadenceChangeAt < REALTIME_ADJUST_DWELL_MS) {
+      return currentRealtimeSeconds;
+    }
+
+    let next = currentRealtimeSeconds;
+    if (refused || rate > REALTIME_SAFE_RATE) {
+      // `rate` can sit below the threshold and still have been refused (a burst
+      // inside the window), so a proportional step needs a floor of one second.
+      const scaled = Math.ceil(currentRealtimeSeconds * (rate / REALTIME_SAFE_RATE));
+      next = Math.min(Math.max(scaled, currentRealtimeSeconds + 1), MAX_REALTIME_SECONDS);
+    } else if (rate < REALTIME_RELAX_RATE) {
+      next = Math.max(currentRealtimeSeconds - 1, realtimeSeconds);
+    }
+    if (next === currentRealtimeSeconds) {
+      return currentRealtimeSeconds;
+    }
+
+    if (next > currentRealtimeSeconds) {
+      logger.info(
+        `Real-time lane slowed to ${next}s (you asked for ${realtimeSeconds}s): ` +
+          `${refused ? 'Gladys refused states' : `the fleet is publishing ${rate} states/min`}, ` +
+          `and the limit is ${STATE_RATE_LIMIT_PER_MINUTE}/min. It speeds back up on its own; ` +
+          'create fewer devices, or raise the refresh interval, to stay at ' +
+          `${realtimeSeconds}s.`,
+      );
+    } else {
+      logger.info(`Real-time lane back to ${next}s (${rate} states/min, there is room again)`);
+    }
+    currentRealtimeSeconds = next;
+    lastCadenceChangeAt = timestamp;
+    return currentRealtimeSeconds;
+  }
+
+  /**
    * Publish a batch of states, remembering only what actually went through.
    * @param {Array<{device_feature_external_id: string, state: number}>} states states to publish
    * @param {number} timestamp current time
@@ -252,7 +428,19 @@ export function createTelemetry({
         });
       } catch (err) {
         // Do NOT record these as published: the next cycle must retry them.
-        logger.warn(`Publishing ${batch.length} state(s) failed: ${err.message}`);
+        if (/too many requests|rate limit|429/i.test(err.message || '')) {
+          // The host just told us the budget is spent. That beats any estimate
+          // we could make, so it slows the lane down without waiting for the
+          // dwell — and it is not the same event as "we are getting close".
+          rateLimitedAt = timestamp;
+          logger.warn(
+            `Gladys refused ${batch.length} state(s): over the ` +
+              `${STATE_RATE_LIMIT_PER_MINUTE}/min limit. They are retried on the next cycle, ` +
+              'and the real-time lane slows down.',
+          );
+        } else {
+          logger.warn(`Publishing ${batch.length} state(s) failed: ${err.message}`);
+        }
       }
     }
     return published;
@@ -284,16 +472,33 @@ export function createTelemetry({
     if (states.length === 0) {
       return;
     }
-    await publishStates(states, timestamp);
-    logger.debug(`Real-time push: ${states.length} state(s) published`);
+    const published = await publishStates(states, timestamp);
+    realtimePublished += published;
+
+    // Once a minute, at INFO. "Are my values really refreshing every 5 s?" is
+    // not a question a user should have to answer by staring at a dashboard,
+    // and a debug-level line is invisible where it matters.
+    if (lastRealtimeSummaryAt === 0) {
+      lastRealtimeSummaryAt = timestamp;
+    } else if (timestamp - lastRealtimeSummaryAt >= 60000) {
+      const realtimeSeconds = effectiveRealtimeSeconds();
+      logger.info(
+        `Real-time lane: ${realtimePublished} state(s) published in the last minute ` +
+          `(every ${realtimeSeconds}s, from ${wsHub.liveCount()} WebSocket and ` +
+          `${mqttSeeded.size} MQTT device(s)); ${currentPublishRate(timestamp)}/` +
+          `${STATE_RATE_LIMIT_PER_MINUTE} states/min of the Gladys budget used`,
+      );
+      realtimePublished = 0;
+      lastRealtimeSummaryAt = timestamp;
+    }
   }
 
-  /** Arm the debounce that flushes the real-time lane at the configured cadence. */
+  /** Arm the debounce that flushes the real-time lane at the current cadence. */
   function scheduleFastFlush() {
     if (fastFlushTimer) {
       return;
     }
-    const { realtimeSeconds } = getConfig();
+    const realtimeSeconds = effectiveRealtimeSeconds();
     if (!realtimeSeconds) {
       // Lane disabled: those values ride the normal refresh cycle like the rest.
       return;
@@ -336,7 +541,7 @@ export function createTelemetry({
     // Live over EITHER push channel. A Gen1 device has no WebSocket at all, so
     // MQTT is the only way it can ever be live — and a Gen2 device the local
     // network cannot reach may still be pushing to the broker.
-    const isLive = wsHub.isLive(target.shellyId) || mqttHub.knows(target.shellyId);
+    const isLive = wsHub.isLive(target.shellyId) || mqttSeeded.has(target.shellyId);
 
     // A live device is served from its buffer, EXCEPT once every safety-net
     // interval: a socket can stay open and silent (device wedged, firmware
@@ -548,6 +753,7 @@ export function createTelemetry({
     }
     wsHub.stop();
     mqttHub.stop();
+    mqttSeeded.clear();
     pushBuffer.clear();
   }
 
@@ -561,5 +767,6 @@ export function createTelemetry({
     wsHub,
     mqttHub,
     flushFast,
+    effectiveRealtimeSeconds,
   };
 }

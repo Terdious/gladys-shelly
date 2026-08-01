@@ -294,8 +294,8 @@
         "fr": "Intervalle temps réel (puissance et marche/arrêt)"
       },
       "description": {
-        "en": "How fast the values a scene reacts to are published: total power, per-relay power and on/off states. Everything else (per-phase detail, energy counters, temperatures) follows the refresh interval above. Gladys accepts 300 states per minute in total, so a short interval here is only sustainable because the lane is kept small — widen your device count and you may need to raise it.",
-        "fr": "Vitesse de publication des valeurs auxquelles une scène réagit : puissance totale, puissance par relais et états marche/arrêt. Tout le reste (détail par phase, compteurs d'énergie, températures) suit l'intervalle de rafraîchissement ci-dessus. Gladys accepte 300 états par minute au total, donc un intervalle court n'est tenable que parce que cette voie reste étroite — avec beaucoup d'appareils il faudra sans doute l'augmenter."
+        "en": "How fast the values a scene reacts to are published: every instantaneous power (total, per phase, per relay) and every on/off state. Everything else (voltages, currents, energy counters, temperatures) follows the refresh interval above. This is a floor, not a promise: Gladys accepts 300 states per minute in total, so on a large fleet the integration slows this lane down on its own and says so in the logs, then returns here as soon as the budget allows.",
+        "fr": "Vitesse de publication des valeurs auxquelles une scène réagit : toutes les puissances instantanées (totale, par phase, par relais) et tous les états marche/arrêt. Tout le reste (tensions, intensités, compteurs d'énergie, températures) suit l'intervalle de rafraîchissement ci-dessus. C'est un plancher, pas une promesse : Gladys accepte 300 états par minute au total, donc sur un grand parc l'intégration ralentit cette voie d'elle-même en l'indiquant dans les logs, puis y revient dès que le budget le permet."
       },
       "required": false,
       "default": "5",
