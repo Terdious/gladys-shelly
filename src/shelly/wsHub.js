@@ -46,7 +46,13 @@ export function createWsHub({ getConfig, onStatus, onConnectionChange = () => {}
     // pure waste.
     const wanted = new Map(
       config.preferLocal
-        ? (targets || []).filter((target) => target.host).map((t) => [t.shellyId, t.host])
+        ? (targets || [])
+            // Gen1 has no `ws://host/rpc` endpoint at all — its push channel is
+            // CoIoT, which is multicast and never crosses the container bridge.
+            // Those devices ride the poll loop, and trying to open a socket
+            // would only produce an endless reconnection loop in the logs.
+            .filter((target) => target.host && (target.gen ?? 2) >= 2)
+            .map((t) => [t.shellyId, t.host])
         : [],
     );
 

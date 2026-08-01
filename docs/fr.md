@@ -11,10 +11,18 @@ broker MQTT, aucun compte obligatoire : une installation 100 % locale
 fonctionne avec un formulaire **entièrement vide**.
 
 > **Générations supportées :** Gen2 et suivantes — Shelly **Plus**, **Pro**,
-> **Mini**, **Gen3**, **Gen4**. Les appareils **Gen1** (Shelly 1, 2.5, Plug S
-> « SHPLG-S », Dimmer 2…) utilisent une API totalement différente et ne sont
-> **pas encore** supportés ; ils sont détectés et ignorés proprement, avec un
-> message explicite dans les logs.
+> **Mini**, **Gen3**, **Gen4** — **ainsi que les Gen1** (Shelly 1, 1PM, 2.5,
+> Plug S « SHPLG-S », EM, 3EM…).
+>
+> Les Gen1 parlent une API totalement différente (REST au lieu de JSON-RPC,
+> authentification Basic au lieu de Digest), mais l'intégration les ramène au
+> **même modèle** : un Shelly 3EM Gen1 expose exactement les mêmes
+> fonctionnalités qu'un Pro 3EM Gen2, avec les mêmes noms. Vos tableaux de bord
+> et vos scènes ne font pas la différence.
+>
+> Une limite à connaître : les Gen1 n'ont **pas de temps réel**. Leur canal de
+> push (CoIoT) est du multicast, qui n'atteint jamais un conteneur Docker ;
+> leurs valeurs suivent donc l'intervalle de rafraîchissement.
 
 ---
 
@@ -192,8 +200,8 @@ configuration et vos appareils sont conservés.
 
 1. **Vérifiez que l'appareil répond.** Depuis un navigateur sur le même réseau,
    ouvrez `http://<ip-du-shelly>/shelly`. Vous devez voir un JSON contenant
-   `"gen": 2` (ou 3, ou 4). Si vous ne voyez **pas** de champ `gen`, c'est un
-   appareil Gen1 : il n'est pas encore supporté.
+   `"gen": 2` (ou 3, ou 4). Si vous ne voyez **pas** de champ `gen` mais un
+   champ `"type"`, c'est un appareil Gen1 : il est supporté aussi, en polling.
 2. **Le mDNS ne traverse pas les VLAN ni certains points d'accès Wi-Fi.**
    Saisissez les adresses IP à la main dans **Adresses d'appareils
    supplémentaires**, puis sauvegardez : la découverte se relance

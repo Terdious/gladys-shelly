@@ -55,10 +55,16 @@ export async function startFakeShelly({
   },
   config = { sys: { device: { name: null } } },
   password = null,
+  gen1Status = null,
+  gen1Settings = { name: null },
 } = {}) {
   const calls = [];
+  const gen1Calls = [];
   const nonce = randomBytes(8).toString('hex');
   const realm = info.id;
+  // A Gen1 device has no `gen` and no `id`: it identifies itself with
+  // `type` + `mac`, and serves REST instead of JSON-RPC.
+  const isGen1 = !info.gen && Boolean(info.type);
 
   const server = http.createServer((req, res) => {
     let body = '';
@@ -74,7 +80,49 @@ export async function startFakeShelly({
       };
 
       if (req.method === 'GET' && req.url === '/shelly') {
-        respond({ ...info, auth_en: Boolean(password) });
+        respond({
+          ...info,
+          auth_en: Boolean(password),
+          ...(isGen1 ? { auth: Boolean(password) } : {}),
+        });
+        return;
+      }
+
+      // --- Gen1: a plain REST surface, with HTTP BASIC auth ------------------
+      // Reproducing the auth difference matters as much as the routes: sending
+      // a digest header to a Gen1 device yields a 401 loop against a password
+      // that is perfectly correct.
+      if (isGen1) {
+        if (password) {
+          const expected = `Basic ${Buffer.from(`admin:${password}`, 'utf8').toString('base64')}`;
+          if ((req.headers.authorization || '') !== expected) {
+            respond({ error: 'unauthorized' }, 401);
+            return;
+          }
+        }
+        const [path, query] = req.url.split('?');
+        gen1Calls.push(req.url);
+        if (path === '/status') {
+          respond(gen1Status);
+          return;
+        }
+        if (path === '/settings') {
+          respond(gen1Settings);
+          return;
+        }
+        const relayMatch = path.match(/^\/relay\/(\d+)$/);
+        if (relayMatch) {
+          const relay = (gen1Status.relays || [])[Number(relayMatch[1])];
+          if (!relay) {
+            respond({ error: 'no such relay' }, 404);
+            return;
+          }
+          const was = relay.ison;
+          relay.ison = new URLSearchParams(query || '').get('turn') === 'on';
+          respond({ ison: relay.ison, was_on: was });
+          return;
+        }
+        respond({ error: 'not found' }, 404);
         return;
       }
 
@@ -208,6 +256,10 @@ export async function startFakeShelly({
     config,
     /** Every RPC request the device received over HTTP, in order. */
     calls,
+    /** Every Gen1 REST URL the device received, in order. */
+    gen1Calls,
+    /** The mutable Gen1 `/status` document, so a test can move a value. */
+    gen1Status,
     /** Every RPC request the device received over the WebSocket, in order. */
     wsCalls,
     /** Number of WebSocket clients currently connected. */
@@ -330,4 +382,57 @@ export const PRO_4PM_STATUS = {
     temperature: { tC: 41.4 },
   },
   'temperature:100': { id: 100, tC: 41.2, tF: 106.2 },
+};
+
+/**
+ * A realistic Gen1 Shelly 3EM `/status` payload (`SHEM-3`).
+ *
+ * Flat and device-specific, which is the whole point: `relays[]` and
+ * `emeters[]` side by side, energy in watt-hours on `total`, and NO apparent
+ * power — the Gen2+ document has none of this shape in common.
+ */
+export const GEN1_3EM_STATUS = {
+  relays: [{ ison: false, has_timer: false, overpower: false }],
+  emeters: [
+    {
+      power: -8.4,
+      pf: 0.01,
+      current: 2.76,
+      voltage: 227.8,
+      is_valid: true,
+      total: 7915525.36,
+      total_returned: 329811.77,
+    },
+    {
+      power: 107.9,
+      pf: 0.2,
+      current: 2.342,
+      voltage: 227.5,
+      is_valid: true,
+      total: 6537028.17,
+      total_returned: 215225.07,
+    },
+    {
+      power: -1150.3,
+      pf: 0.9,
+      current: 5.578,
+      voltage: 228.4,
+      is_valid: true,
+      total: 7503374.27,
+      total_returned: 284224.17,
+    },
+  ],
+  total_power: -1050.756,
+  fs_mounted: true,
+  update: { status: 'idle', has_update: false },
+};
+
+/** The `/shelly` identity of a Gen1 Shelly 3EM — no `gen`, and no `id` either. */
+export const GEN1_3EM_INFO = {
+  type: 'SHEM-3',
+  mac: '483FDAC37E3F',
+  auth: false,
+  fw: '20230913-114244/v1.14.0-gcb84623',
+  discoverable: true,
+  num_meters: 3,
 };

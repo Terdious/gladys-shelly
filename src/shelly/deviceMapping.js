@@ -169,3 +169,20 @@ export function readShellyId(device) {
 export function readHost(device) {
   return device?.params?.find((param) => param.name === PARAM_IP_ADDRESS)?.value || undefined;
 }
+
+/**
+ * Read the hardware generation of a device created in Gladys.
+ *
+ * This is what routes a device to the right transport: Gen1 speaks REST with
+ * Basic auth and has no WebSocket, Gen2+ speaks JSON-RPC with digest. Devices
+ * created before the param existed are Gen2+ by construction — Gen1 was not
+ * supported then — so that is the safe default.
+ *
+ * @param {object} device a Gladys device
+ * @returns {number} the generation
+ */
+export function readGeneration(device) {
+  const raw = device?.params?.find((param) => param.name === PARAM_SHELLY_GEN)?.value;
+  const generation = Number.parseInt(raw, 10);
+  return Number.isFinite(generation) && generation > 0 ? generation : 2;
+}

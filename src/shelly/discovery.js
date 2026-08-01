@@ -35,7 +35,9 @@ import {
   POLL_CONCURRENCY,
   SKIP_REASON,
 } from './constants.js';
-import { buildDevice, readHost, readShellyId } from './deviceMapping.js';
+import { buildDevice, readGeneration, readHost, readShellyId } from './deviceMapping.js';
+import { getGen1Settings, getGen1Status } from './gen1/rest.js';
+import { normalizeGen1Info, normalizeGen1Settings, normalizeGen1Status } from './gen1/normalize.js';
 import { getShellyInfo, ShellyAuthError } from './rpc.js';
 
 /**
@@ -176,6 +178,56 @@ export function describeSkip({ host, reason, detail, model }) {
 }
 
 /**
+ * Finish probing a device that identified itself as Gen1.
+ * @param {object} params probe inputs
+ * @param {object} params.gladys the SDK instance
+ * @param {object} params.config the normalized configuration
+ * @param {string} params.host address being probed
+ * @param {object} params.info the raw Gen1 `/shelly` identity document
+ * @param {typeof fetch} [params.fetchImpl] fetch implementation (tests)
+ * @returns {Promise<object>} the outcome
+ */
+async function probeGen1Host({ gladys, config, host, info, fetchImpl }) {
+  const credentials = {
+    host,
+    username: config?.deviceUsername,
+    password: config?.devicePassword,
+    fetchImpl,
+  };
+
+  let status;
+  try {
+    status = await getGen1Status(credentials);
+  } catch (err) {
+    return {
+      host,
+      reason: err instanceof ShellyAuthError ? SKIP_REASON.NEEDS_PASSWORD : SKIP_REASON.NO_STATUS,
+      detail: err.message,
+    };
+  }
+
+  // Names only: a failure here costs nice labels, not the device.
+  let settings;
+  try {
+    settings = await getGen1Settings(credentials);
+  } catch (err) {
+    logger.debug(`${host} did not answer /settings: ${err.message}`);
+  }
+
+  const identity = normalizeGen1Info(info);
+  return {
+    host,
+    device: buildDevice({
+      info: identity,
+      status: normalizeGen1Status(status),
+      config: normalizeGen1Settings(settings),
+      host,
+      externalIds: gladys.externalIds(DEVICE_TYPE, identity.id),
+    }),
+  };
+}
+
+/**
  * Probe ONE candidate address and build the Gladys device behind it.
  *
  * Always resolves to an OUTCOME, never to `undefined`: a probe that finds
@@ -184,11 +236,12 @@ export function describeSkip({ host, reason, detail, model }) {
  * @param {object} params probe inputs
  * @param {object} params.gladys the SDK instance
  * @param {object} params.client the transport router
+ * @param {object} [params.config] the normalized configuration (Gen1 credentials)
  * @param {string} params.host address to probe
  * @param {typeof fetch} [params.fetchImpl] fetch implementation (tests)
  * @returns {Promise<{host: string, device?: object, reason?: string, detail?: string, model?: string}>} the outcome
  */
-export async function probeHost({ gladys, client, host, fetchImpl = fetch }) {
+export async function probeHost({ gladys, client, config, host, fetchImpl = fetch }) {
   let info;
   try {
     info = await getShellyInfo({ host, fetchImpl });
@@ -209,15 +262,12 @@ export async function probeHost({ gladys, client, host, fetchImpl = fetch }) {
     return { host, reason: SKIP_REASON.NOT_A_SHELLY };
   }
 
-  // Gen1 speaks a completely different API (/status, /relay/0) and does not
-  // self-describe its capabilities. Say so explicitly rather than failing later
-  // with a cryptic RPC error.
+  // Gen1 speaks a completely different API — REST with Basic auth instead of
+  // JSON-RPC with digest. Only the transport differs: normalize.js rewrites its
+  // flat `/status` into the same component-keyed document the Gen2+ mapper
+  // consumes, so everything below this point is shared.
   if (!isGen2Plus) {
-    return {
-      host,
-      reason: SKIP_REASON.GEN1,
-      model: info.type || info.model || 'unknown model',
-    };
+    return probeGen1Host({ gladys, config, host, info, fetchImpl });
   }
 
   const rpc = client.rpcFor(info.id, host);
@@ -232,11 +282,12 @@ export async function probeHost({ gladys, client, host, fetchImpl = fetch }) {
     };
   }
 
-  // The config only carries the user-set names: a failure here costs nice
-  // labels, not the device.
-  let config;
+  // The device config only carries the user-set names: a failure here costs
+  // nice labels, not the device. Named `deviceConfig` to keep it distinct from
+  // the integration `config` this function also receives.
+  let deviceConfig;
   try {
-    config = await rpc.call('Shelly.GetConfig');
+    deviceConfig = await rpc.call('Shelly.GetConfig');
   } catch (err) {
     logger.debug(`${host} (${info.id}) did not answer Shelly.GetConfig: ${err.message}`);
   }
@@ -246,7 +297,7 @@ export async function probeHost({ gladys, client, host, fetchImpl = fetch }) {
     device: buildDevice({
       info,
       status,
-      config,
+      config: deviceConfig,
       host,
       externalIds: gladys.externalIds(DEVICE_TYPE, info.id),
     }),
@@ -296,7 +347,7 @@ export async function discoverDevices({
       return 0;
     }
     const results = await mapWithConcurrency(fresh, POLL_CONCURRENCY, (host) =>
-      probeHost({ gladys, client, host, fetchImpl }),
+      probeHost({ gladys, client, config, host, fetchImpl }),
     );
     results.forEach((outcome) => {
       outcomes.set(outcome.host, outcome);
@@ -376,6 +427,11 @@ export async function discoverDevices({
  */
 export function buildTargets(devices) {
   return (devices || [])
-    .map((device) => ({ device, shellyId: readShellyId(device), host: readHost(device) }))
+    .map((device) => ({
+      device,
+      shellyId: readShellyId(device),
+      host: readHost(device),
+      gen: readGeneration(device),
+    }))
     .filter((target) => Boolean(target.shellyId));
 }

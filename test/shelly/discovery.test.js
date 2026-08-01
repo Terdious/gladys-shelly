@@ -11,7 +11,12 @@ import {
   discoverDevices,
   probeHost,
 } from '../../src/shelly/discovery.js';
-import { PRO_4PM_STATUS, startFakeShelly } from '../helpers/fakeShelly.js';
+import {
+  GEN1_3EM_INFO,
+  GEN1_3EM_STATUS,
+  PRO_4PM_STATUS,
+  startFakeShelly,
+} from '../helpers/fakeShelly.js';
 
 /** Minimal stand-in for the SDK surface discovery uses. */
 function fakeGladys({ mdns = [], mdnsError = null } = {}) {
@@ -192,24 +197,110 @@ describe('discoverDevices', () => {
     assert.equal(found[0].external_id, 'ext:shelly:device:shellyplusplugs-fcb467266e2c');
   });
 
-  it('skips a Gen1 device instead of failing on it later', async () => {
-    // A REAL Gen1 `/shelly` document: no `gen`, and crucially no `id` either —
-    // it identifies itself with `type` + `mac`. Giving the fake an `id` it does
-    // not have is what let a broken ordering look tested.
+  it('discovers a Gen1 3EM with the SAME features as a Gen2 Pro 3EM', async () => {
+    // The point of the normalizer: whichever generation is behind the clamp,
+    // the user gets the same feature names, so the same dashboards and scenes
+    // work. If this drifts, a Gen1 3EM becomes a second thing to configure.
     const gen1 = await startFakeShelly({
-      info: {
-        type: 'SHSW-25',
-        mac: 'A4CF12345678',
-        auth: false,
-        fw: '20230913-114244/v1.14.0-gcb84623',
-      },
+      info: GEN1_3EM_INFO,
+      gen1Status: structuredClone(GEN1_3EM_STATUS),
+      gen1Settings: { name: 'Arrivée EDF - L1', relays: [{ name: 'Contacteur' }] },
     });
     devices.push(gen1);
 
     const { client, config } = routerFor({ manual_hosts: gen1.host });
     const found = await discoverDevices({ gladys: fakeGladys(), client, config });
 
-    assert.deepEqual(found, []);
+    assert.equal(found.length, 1);
+    const device = found[0];
+    assert.equal(device.name, 'Arrivée EDF - L1');
+    // The id is derived the way Shelly itself does it, so external ids and
+    // selectors stay reconstructible across re-discoveries.
+    assert.equal(device.external_id, 'ext:shelly:device:shem3-483fdac37e3f');
+
+    const keys = device.features.map((feature) => feature.external_id);
+    const suffix = (key) => `ext:shelly:device:shem3-483fdac37e3f:${key}`;
+    // Three phases folded onto ONE em:0, exactly like a Pro 3EM reports them.
+    assert.ok(keys.includes(suffix('em:0:l1_active_power')));
+    assert.ok(keys.includes(suffix('em:0:l3_voltage')));
+    assert.ok(keys.includes(suffix('em:0:total_active_power')));
+    assert.ok(keys.includes(suffix('emdata:0:l2_total_energy')));
+    // The relay the 3EM carries, named from /settings.
+    assert.ok(keys.includes(suffix('switch:0:binary')));
+    assert.ok(device.features.some((feature) => feature.name === 'Contacteur — On/Off'));
+  });
+
+  it('reads Gen1 values through the same state mapper', async () => {
+    const gen1 = await startFakeShelly({
+      info: GEN1_3EM_INFO,
+      gen1Status: structuredClone(GEN1_3EM_STATUS),
+    });
+    devices.push(gen1);
+
+    const { client, config } = routerFor({ manual_hosts: gen1.host });
+    const found = await discoverDevices({ gladys: fakeGladys(), client, config });
+    const { status } = await client.getStatus({
+      shellyId: 'shem3-483fdac37e3f',
+      host: gen1.host,
+      gen: 1,
+    });
+
+    assert.equal(found.length, 1);
+    // total_power is taken from the device, not summed from the phases.
+    assert.equal(status['em:0'].total_act_power, -1050.756);
+    assert.equal(status['em:0'].a_act_power, -8.4);
+    // Apparent power is DERIVED (U x I), because Gen1 does not report it.
+    assert.equal(Math.round(status['em:0'].a_aprt_power), Math.round(227.8 * 2.76));
+    assert.equal(status['emdata:0'].a_total_act_energy, 7915525.36);
+    assert.equal(status['switch:0'].output, false);
+  });
+
+  it('flips a Gen1 relay over REST, not RPC', async () => {
+    const gen1 = await startFakeShelly({
+      info: GEN1_3EM_INFO,
+      gen1Status: structuredClone(GEN1_3EM_STATUS),
+    });
+    devices.push(gen1);
+
+    const { client } = routerFor();
+    const transport = await client.setSwitch(
+      { shellyId: 'shem3-483fdac37e3f', host: gen1.host, gen: 1 },
+      0,
+      true,
+    );
+
+    assert.equal(transport, 'local');
+    assert.equal(gen1.gen1Status.relays[0].ison, true);
+    assert.ok(gen1.gen1Calls.some((url) => url === '/relay/0?turn=on'));
+  });
+
+  it('authenticates a Gen1 device with BASIC, not digest', async () => {
+    // Sending a digest header to a Gen1 device yields a 401 loop against a
+    // password that is perfectly correct — the classic Gen1 trap.
+    const locked = await startFakeShelly({
+      info: GEN1_3EM_INFO,
+      gen1Status: structuredClone(GEN1_3EM_STATUS),
+      password: 'hunter2',
+    });
+    devices.push(locked);
+
+    const withoutPassword = routerFor({ manual_hosts: locked.host });
+    assert.deepEqual(
+      await discoverDevices({
+        gladys: fakeGladys(),
+        client: withoutPassword.client,
+        config: withoutPassword.config,
+      }),
+      [],
+    );
+
+    const withPassword = routerFor({ manual_hosts: locked.host, device_password: 'hunter2' });
+    const found = await discoverDevices({
+      gladys: fakeGladys(),
+      client: withPassword.client,
+      config: withPassword.config,
+    });
+    assert.equal(found.length, 1);
   });
 
   it('ignores an address that is not a Shelly at all', async () => {
@@ -338,26 +429,26 @@ describe('probeHost outcomes', () => {
     assert.match(describeSkip(outcome), /no answer/i);
   });
 
-  it('names a Gen1 device as such, even though it has no `id`', async () => {
+  it('recognises a Gen1 device, which has no `id` at all', async () => {
     // Regression test for the bench report. A Shelly 3EM was reported as
     // "answered /shelly but without a device id — not a Shelly", because the
     // `id` test ran BEFORE the generation test and no Gen1 device has an `id`.
     // The Gen1 branch was unreachable for every real Gen1 device.
     const gen1 = await startFakeShelly({
-      info: {
-        type: 'SHEM-3',
-        mac: '483FDAC37E3F',
-        auth: false,
-        fw: '20230913-114244/v1.14.0-gcb84623',
-        num_meters: 3,
-      },
+      info: GEN1_3EM_INFO,
+      gen1Status: structuredClone(GEN1_3EM_STATUS),
     });
     devices.push(gen1);
 
-    const outcome = await probeHost({ gladys, client: routerFor(), host: gen1.host });
+    const outcome = await probeHost({
+      gladys,
+      client: routerFor(),
+      config: normalizeConfig({}),
+      host: gen1.host,
+    });
 
-    assert.equal(outcome.reason, SKIP_REASON.GEN1);
-    assert.match(describeSkip(outcome), /Gen1 Shelly \(SHEM-3\)/);
+    assert.equal(outcome.reason, undefined);
+    assert.equal(outcome.device.external_id, 'ext:shelly:device:shem3-483fdac37e3f');
   });
 
   it('still reports a genuine non-Shelly as such', async () => {
