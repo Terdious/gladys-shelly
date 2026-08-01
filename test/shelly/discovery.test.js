@@ -67,6 +67,22 @@ describe('browseMdns', () => {
     assert.deepEqual(await browseMdns(gladys), ['10.5.0.209', '10.5.0.190', '10.5.0.174']);
   });
 
+  it('keeps a Gen1 device on _http._tcp but not the printers sharing it', async () => {
+    // Gen1 announces on the GENERIC _http._tcp service, which every printer and
+    // NAS also uses. There the `shelly*` prefix is the only thing telling a
+    // 3EM from a LaserJet, so it is required — the opposite of the rule that
+    // applies on Shelly's own service.
+    const gladys = fakeGladys({
+      mdns: [
+        { name: 'shellyem3-483FDAC37E3F._http._tcp.local.', addresses: ['10.5.0.174'] },
+        { name: 'HP LaserJet._http._tcp.local.', addresses: ['10.5.0.200'] },
+        { name: 'diskstation._smb._tcp.local.', addresses: ['10.5.0.201'] },
+      ],
+    });
+
+    assert.deepEqual(await browseMdns(gladys), ['10.5.0.174']);
+  });
+
   it('merges several browse rounds, because one snapshot comes back short', async () => {
     // A device that was busy or unlucky with multicast collisions during the
     // first browse answers the second. Losing it would look to the user like
@@ -177,13 +193,15 @@ describe('discoverDevices', () => {
   });
 
   it('skips a Gen1 device instead of failing on it later', async () => {
-    // A Gen1 answers /shelly with a completely different document and no `gen`.
+    // A REAL Gen1 `/shelly` document: no `gen`, and crucially no `id` either —
+    // it identifies itself with `type` + `mac`. Giving the fake an `id` it does
+    // not have is what let a broken ordering look tested.
     const gen1 = await startFakeShelly({
       info: {
         type: 'SHSW-25',
         mac: 'A4CF12345678',
-        id: 'shellyswitch25-a4cf12345678',
         auth: false,
+        fw: '20230913-114244/v1.14.0-gcb84623',
       },
     });
     devices.push(gen1);
@@ -320,16 +338,37 @@ describe('probeHost outcomes', () => {
     assert.match(describeSkip(outcome), /no answer/i);
   });
 
-  it('names a Gen1 device as such', async () => {
+  it('names a Gen1 device as such, even though it has no `id`', async () => {
+    // Regression test for the bench report. A Shelly 3EM was reported as
+    // "answered /shelly but without a device id — not a Shelly", because the
+    // `id` test ran BEFORE the generation test and no Gen1 device has an `id`.
+    // The Gen1 branch was unreachable for every real Gen1 device.
     const gen1 = await startFakeShelly({
-      info: { type: 'SHSW-25', mac: 'A4CF12345678', id: 'shellyswitch25-a4cf12345678' },
+      info: {
+        type: 'SHEM-3',
+        mac: '483FDAC37E3F',
+        auth: false,
+        fw: '20230913-114244/v1.14.0-gcb84623',
+        num_meters: 3,
+      },
     });
     devices.push(gen1);
 
     const outcome = await probeHost({ gladys, client: routerFor(), host: gen1.host });
 
     assert.equal(outcome.reason, SKIP_REASON.GEN1);
-    assert.match(describeSkip(outcome), /Gen1 Shelly \(SHSW-25\)/);
+    assert.match(describeSkip(outcome), /Gen1 Shelly \(SHEM-3\)/);
+  });
+
+  it('still reports a genuine non-Shelly as such', async () => {
+    // The permissive `_http._tcp` browse will hand over printers and NAS boxes.
+    // Widening the Gen1 test must not turn every HTTP responder into a Shelly.
+    const notAShelly = await startFakeShelly({ info: { product: 'LaserJet', serial: '42' } });
+    devices.push(notAShelly);
+
+    const outcome = await probeHost({ gladys, client: routerFor(), host: notAShelly.host });
+
+    assert.equal(outcome.reason, SKIP_REASON.NOT_A_SHELLY);
   });
 
   it('names a password-protected device as such', async () => {

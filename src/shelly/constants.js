@@ -16,6 +16,18 @@ export const MDNS_SERVICE = '_shelly._tcp';
 /** The service part of `_shelly._tcp`, used to tell a Shelly record from another service. */
 export const MDNS_SERVICE_NAME = 'shelly';
 
+/**
+ * Generic service Gen1 devices announce on. They do NOT use `_shelly._tcp`, so
+ * a Gen1 fleet is invisible to a browse that only declares the Shelly service.
+ */
+export const MDNS_GEN1_SERVICE = '_http._tcp';
+
+/**
+ * `_http._tcp` is shared with every printer and NAS on the LAN, so a Gen1
+ * record is only recognizable by this name prefix (`shellyem3-483fdac37e3f`).
+ */
+export const GEN1_MDNS_NAME_PREFIX = 'shelly';
+
 /** Default HTTP port of a Shelly device. */
 export const DEFAULT_HTTP_PORT = 80;
 

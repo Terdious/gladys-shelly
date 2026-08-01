@@ -28,6 +28,7 @@ import { logger } from '@gladysassistant/integration-sdk';
 import { mapWithConcurrency } from './async.js';
 import {
   DEVICE_TYPE,
+  GEN1_MDNS_NAME_PREFIX,
   MDNS_ROUND_TIMEOUT_SECONDS,
   MDNS_ROUNDS,
   MDNS_SERVICE_NAME,
@@ -38,21 +39,33 @@ import { buildDevice, readHost, readShellyId } from './deviceMapping.js';
 import { getShellyInfo, ShellyAuthError } from './rpc.js';
 
 /**
- * Whether an mDNS record proves it belongs to a service that is NOT Shelly.
+ * Whether an mDNS record is worth probing, given the service it announces on.
  *
- * The rule is deliberately narrow — drop only what IDENTIFIES ITSELF as
- * something else. A Shelly named in the app announces under that name
- * ("Prise Lave-vaisselle._shelly._tcp.local", "Pro3 L1 Batiment Perso"), so any
- * test of the form "the name starts with shelly" silently loses exactly the
- * devices the user cared enough about to name — and loses them in the way that
- * looks like "my device is not supported".
+ * Two services are declared, and they need OPPOSITE rules:
+ *
+ *   - `_shelly._tcp` is Shelly's own service, so everything on it is a Shelly.
+ *     Keep it all — a device named in the app announces under THAT name
+ *     ("Prise Lave-vaisselle", "Pro3 L1 Batiment Perso"), so any test of the
+ *     form "the name starts with shelly" silently loses exactly the devices the
+ *     user cared enough about to name;
+ *   - `_http._tcp` is where Gen1 devices announce, and it is shared with every
+ *     printer and NAS on the LAN. Here the `shelly*` name prefix is the only
+ *     thing separating a Shelly 3EM from a laser printer, so it is required.
+ *
+ * A record whose name carries no service at all (some cores hand over the
+ * instance name alone) is kept: we asked the core for these two services and
+ * nothing else, and a needless probe costs one failed HTTP request that the
+ * scan summary reports — while a wrong drop costs a device.
  *
  * @param {string} name the record name
- * @returns {boolean} true when the record announces another service
+ * @returns {boolean} true when the record is worth probing
  */
-function announcesAnotherService(name) {
+function isProbableShelly(name) {
   const match = name.match(/\._([a-z0-9-]+)\._(?:tcp|udp)\b/i);
-  return Boolean(match) && match[1].toLowerCase() !== MDNS_SERVICE_NAME;
+  if (!match || match[1].toLowerCase() === MDNS_SERVICE_NAME) {
+    return true;
+  }
+  return name.toLowerCase().startsWith(GEN1_MDNS_NAME_PREFIX);
 }
 
 /**
@@ -62,7 +75,7 @@ function announcesAnotherService(name) {
  */
 function extractShellyHosts(records) {
   const hosts = (records || [])
-    .filter((record) => !announcesAnotherService(`${record?.name || ''}`))
+    .filter((record) => isProbableShelly(`${record?.name || ''}`))
     .flatMap((record) => record?.addresses || [])
     // IPv6 link-local addresses are announced too and are not reachable from
     // the container: keep the IPv4 ones.
@@ -183,16 +196,23 @@ export async function probeHost({ gladys, client, host, fetchImpl = fetch }) {
     return { host, reason: SKIP_REASON.NO_ANSWER, detail: err.message };
   }
 
-  if (!info || !info.id) {
+  // ORDER MATTERS HERE. A Gen1 `/shelly` document has NO `id` — it identifies
+  // itself with `type` and `mac`:
+  //   {"type":"SHEM-3","mac":"483FDAC37E3F","auth":false,"fw":"...","num_meters":3}
+  // Testing `id` first therefore sends every real Gen1 device down the
+  // "not a Shelly" path and leaves the Gen1 branch below unreachable, which is
+  // exactly what a Shelly 3EM looked like in the scan summary.
+  const generation = Number(info?.gen);
+  const isGen2Plus = Number.isFinite(generation) && generation >= 2;
+
+  if (!info || (!info.id && !(info.type && info.mac))) {
     return { host, reason: SKIP_REASON.NOT_A_SHELLY };
   }
 
-  // Gen1 devices answer /shelly too, but with a completely different API
-  // (/status, /relay/0) and no `gen` field. Detect them explicitly so the log
-  // says why they are skipped instead of failing later with a cryptic RPC
-  // error.
-  const generation = Number(info.gen);
-  if (!Number.isFinite(generation) || generation < 2) {
+  // Gen1 speaks a completely different API (/status, /relay/0) and does not
+  // self-describe its capabilities. Say so explicitly rather than failing later
+  // with a cryptic RPC error.
+  if (!isGen2Plus) {
     return {
       host,
       reason: SKIP_REASON.GEN1,
