@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { after, describe, it } from 'node:test';
+import { after, beforeEach, describe, it } from 'node:test';
 
 import { normalizeConfig } from '../../src/config.js';
 import { createShellyClient } from '../../src/shelly/client.js';
@@ -9,6 +9,7 @@ import {
   buildTargets,
   describeSkip,
   discoverDevices,
+  forgetSeenHosts,
   probeHost,
 } from '../../src/shelly/discovery.js';
 import {
@@ -116,8 +117,13 @@ describe('browseMdns', () => {
 
 describe('discoverDevices', () => {
   const devices = [];
+  // The cross-scan memory is module-level BY DESIGN, so it has to be cleared
+  // between tests — otherwise each fake device stays remembered and later
+  // scans find devices the test never set up.
+  beforeEach(() => forgetSeenHosts());
   after(async () => {
     await Promise.all(devices.map((device) => device.close()));
+    forgetSeenHosts();
   });
 
   /** A router wired to the real RPC stack, with no cloud configured. */
@@ -506,5 +512,46 @@ describe('buildTargets', () => {
   it('tolerates an empty or missing device list', () => {
     assert.deepEqual(buildTargets([]), []);
     assert.deepEqual(buildTargets(undefined), []);
+  });
+});
+
+describe('cross-scan memory', () => {
+  const devices = [];
+  after(async () => {
+    await Promise.all(devices.map((device) => device.close()));
+    forgetSeenHosts();
+  });
+
+  it('never loses a device that answered once, whatever mDNS does next', async () => {
+    // THE answer to the bench report: the same fleet came back as 19, then 23,
+    // then 27 mDNS records, with several devices systematically absent. A scan
+    // must accumulate rather than replace, the way a permanent listener does.
+    forgetSeenHosts();
+    const shelly = await startFakeShelly();
+    devices.push(shelly);
+
+    const config = normalizeConfig({});
+    const client = createShellyClient({
+      getConfig: () => config,
+      cloud: {
+        async getStatus() {
+          throw new Error('cloud not configured');
+        },
+      },
+    });
+
+    const seen = fakeGladys({
+      mdns: [{ name: 'x._shelly._tcp.local', addresses: [shelly.host] }],
+    });
+    const first = await discoverDevices({ gladys: seen, client, config });
+    assert.equal(first.length, 1);
+
+    // The very next browse does not announce it at all — which is exactly what
+    // the bench observed, scan after scan.
+    const blind = fakeGladys({ mdns: [] });
+    const second = await discoverDevices({ gladys: blind, client, config });
+
+    assert.equal(second.length, 1, 'a device seen once must survive a blind browse');
+    assert.equal(second[0].external_id, first[0].external_id);
   });
 });

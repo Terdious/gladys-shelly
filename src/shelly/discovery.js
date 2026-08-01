@@ -305,6 +305,33 @@ export async function probeHost({ gladys, client, config, host, fetchImpl = fetc
 }
 
 /**
+ * Addresses that have ALREADY answered as a Shelly, remembered across scans.
+ *
+ * An mDNS browse is a 12-second window and comes back with a different subset
+ * every time — a reference installation reported 19, then 23, then 27 records
+ * for the same fleet, with several devices systematically absent. Home
+ * Assistant does nothing cleverer: it simply listens PERMANENTLY and
+ * accumulates.
+ *
+ * Remembering every address that ever answered, and re-probing it in unicast on
+ * the next scan, is the closest equivalent available within a short window: a
+ * device seen once is never lost again. Unicast is cheap, reliable, and crosses
+ * the bridge network that multicast cannot.
+ *
+ * Module-level, so the memory spans scans within one container lifetime. It is
+ * deliberately NOT persisted: an address is a DHCP lease, and re-probing stale
+ * ones on every start would cost a timeout per dead entry. Devices the user
+ * actually created carry their address in their params and are seeded from
+ * there regardless.
+ */
+const seenShellyHosts = new Set();
+
+/** Forget the remembered addresses (used by the tests). */
+export function forgetSeenHosts() {
+  seenShellyHosts.clear();
+}
+
+/**
  * Run a full discovery and return the devices found.
  *
  * @param {object} params discovery inputs
@@ -327,6 +354,7 @@ export async function discoverDevices({
   onProgress,
 }) {
   const knownHosts = knownDevices.map((device) => readHost(device)).filter(Boolean);
+  const rememberedHosts = [...seenShellyHosts];
 
   /** Every address already probed, mapped to its outcome — a host is probed once. */
   const outcomes = new Map();
@@ -352,6 +380,8 @@ export async function discoverDevices({
     results.forEach((outcome) => {
       outcomes.set(outcome.host, outcome);
       if (outcome.device) {
+        // Remembered for every later scan, whatever mDNS decides next time.
+        seenShellyHosts.add(outcome.host);
         // Deduplicate on the external id, which is derived from the Shelly id
         // and is therefore the hardware identity.
         byExternalId.set(outcome.device.external_id, outcome.device);
@@ -375,11 +405,17 @@ export async function discoverDevices({
   // --- Round 1: the sources we already have, plus a first mDNS browse. -------
   const firstRound = await browseMdnsOnce(gladys);
   const mdnsHosts = new Set(firstRound || []);
-  const seededCount = await probeNewHosts([...mdnsHosts, ...config.manualHosts, ...knownHosts]);
+  const seededCount = await probeNewHosts([
+    ...mdnsHosts,
+    ...config.manualHosts,
+    ...knownHosts,
+    ...rememberedHosts,
+  ]);
   logger.info(
     `Discovery: round 1 probed ${seededCount} address(es) — ` +
       `${mdnsHosts.size} from mDNS, ${config.manualHosts.length} configured by hand, ` +
-      `${knownHosts.length} already known; ${byExternalId.size} device(s) so far`,
+      `${knownHosts.length} already created, ${rememberedHosts.length} remembered from an ` +
+      `earlier scan; ${byExternalId.size} device(s) so far`,
   );
   await reportProgress();
 
