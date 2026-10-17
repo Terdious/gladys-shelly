@@ -100,7 +100,32 @@ export const COMPONENT = {
   TEMPERATURE: 'temperature',
   HUMIDITY: 'humidity',
   DEVICEPOWER: 'devicepower',
+  /**
+   * Virtual components: how "Powered by Shelly" devices (LinkedGo ST1820…)
+   * describe their own values. Their meaning is in `Shelly.GetComponents`
+   * (`config` + `attrs.role`), not in the status key.
+   */
+  NUMBER: 'number',
+  BOOLEAN: 'boolean',
+  ENUM: 'enum',
 };
+
+/** Virtual component families, i.e. the ones whose metadata lives in `Shelly.GetComponents`. */
+export const VIRTUAL_FAMILIES = [COMPONENT.NUMBER, COMPONENT.BOOLEAN, COMPONENT.ENUM];
+
+/**
+ * Upper bound on the `Shelly.GetComponents` pages read for one device. A real
+ * device answers in two (10 + 5 on an ST1820); the bound only stops a firmware
+ * that keeps reporting a `total` it never reaches from looping forever.
+ */
+export const GET_COMPONENTS_MAX_PAGES = 20;
+
+/**
+ * How long a failed `Shelly.GetComponents` read is remembered before telemetry
+ * tries again, in ms. Without the metadata a device still works (same features,
+ * same values), so this only has to stop a retry on every cycle.
+ */
+export const COMPONENTS_RETRY_MS = 10 * 60 * 1000;
 
 /** Phases of a three-phase meter: Shelly prefix -> label used in feature ids. */
 export const EM_PHASES = [
@@ -136,6 +161,15 @@ export const MODEL_NAMES = {
   'SPEM-003CEBEU400': 'Shelly Pro 3EM',
   'S3SW-001P16EU': 'Shelly 1PM Gen3',
   'S3EM-003CXCEU63': 'Shelly 3EM Gen3',
+};
+
+/**
+ * Gladys feature name suffix per virtual family. Like every other suffix in
+ * features.js these are FROZEN: they are part of the feature external id.
+ */
+export const VIRTUAL_SUFFIX = {
+  number: 'value',
+  boolean: 'binary',
 };
 
 /** Messages shown on the Configuration screen (multi-language, `en` mandatory). */

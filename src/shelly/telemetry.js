@@ -48,6 +48,7 @@ import { buildStates } from './deviceMapping.js';
 import { buildFeatureSpecs } from './features.js';
 import { buildTargets, discoverDevices, publishDiscovered } from './discovery.js';
 import { createMqttHub } from './mqttHub.js';
+import { hasVirtualComponents } from './virtualComponents.js';
 import { createWsHub } from './wsHub.js';
 
 /** Maximum number of states accepted by one POST /state (host API limit). */
@@ -271,8 +272,14 @@ export function createTelemetry({
   function bufferPushedStatus(shellyId, status) {
     const externalIds = gladys.externalIds(DEVICE_TYPE, shellyId);
     const buffered = pushBuffer.get(shellyId) || new Map();
+    // Virtual components (`number:N`, `boolean:N`) are routed by the same
+    // mapper. Their metadata only decides the lane (a writable setpoint is
+    // controllable, so fast), and it is read from the cache: this path is
+    // synchronous and never waits on the network.
+    const components =
+      typeof client.cachedComponents === 'function' ? client.cachedComponents(shellyId) : undefined;
 
-    buildFeatureSpecs(status).forEach((spec) => {
+    buildFeatureSpecs(status, components).forEach((spec) => {
       const componentStatus = status[spec.componentKey];
       const value = componentStatus == null ? undefined : spec.read(componentStatus);
       if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -557,6 +564,12 @@ export function createTelemetry({
     try {
       const { status, transport, degraded, message } = await client.getStatus(target);
       lastPolledAt.set(target.shellyId, timestamp);
+      if (hasVirtualComponents(status) && typeof client.componentsFor === 'function') {
+        // After a restart nothing has read the metadata yet. Values do not need
+        // it, but the push lanes do — so read it once now (cached afterwards,
+        // and a failure is not retried every cycle).
+        await client.componentsFor(target);
+      }
       return {
         target,
         states: buildStates({

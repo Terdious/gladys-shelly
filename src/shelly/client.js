@@ -21,7 +21,7 @@
 import { DEVICE_TRANSPORTS, logger } from '@gladysassistant/integration-sdk';
 
 import { isCloudConfigured } from '../config.js';
-import { TRANSPORT_MESSAGES } from './constants.js';
+import { COMPONENTS_RETRY_MS, TRANSPORT_MESSAGES } from './constants.js';
 import {
   clearLocalCircuit,
   isLocalInCooldown,
@@ -32,6 +32,12 @@ import {
 import { normalizeGen1Status } from './gen1/normalize.js';
 import { getGen1Status, setGen1Relay } from './gen1/rest.js';
 import { createRpcClient, ShellyAuthError, ShellyConnectionError } from './rpc.js';
+import {
+  fetchVirtualComponents,
+  hidesVirtualStatus,
+  mergeVirtualStatus,
+  VIRTUAL_SET_METHOD,
+} from './virtualComponents.js';
 
 /**
  * Create the transport router.
@@ -54,6 +60,14 @@ export function createShellyClient({
   const rpcClients = new Map();
   /** Per-device local health, so an unreachable device is not retried every cycle. */
   const circuit = new Map();
+  /**
+   * Virtual-component metadata per Shelly id (`Shelly.GetComponents`). Read at
+   * every discovery, and lazily after a restart; never on every poll, because
+   * it is paginated and does not change unless the device is reconfigured.
+   */
+  const componentsCache = new Map();
+  /** When a metadata read last failed, so it is not retried on every cycle. */
+  const componentsFailedAt = new Map();
 
   /**
    * Get (or build) the RPC client of one device.
@@ -193,6 +207,46 @@ export function createShellyClient({
   }
 
   /**
+   * RPC call on one device over its local address, for the follow-up reads of
+   * a status that just succeeded there.
+   * @param {string} shellyId the Shelly device id
+   * @param {string} host IP address or hostname
+   * @returns {(method: string, params?: object) => Promise<object>} the call
+   */
+  function localCall(shellyId, host) {
+    return (method, params) => rpcFor(shellyId, host).call(method, params);
+  }
+
+  /**
+   * Complete the status of a device that hides its virtual components from
+   * `Shelly.GetStatus` (LinkedGo ST1820): their values are only served by
+   * `Shelly.GetComponents`, so it is read on every poll of such a device — and
+   * only of such a device. The metadata it carries refreshes the cache on the
+   * way.
+   *
+   * Never throws: the status that was read is still worth publishing, so a
+   * failed completion costs one cycle of thermostat values, not the device.
+   *
+   * @param {string} shellyId the Shelly device id
+   * @param {object} status the `Shelly.GetStatus` result
+   * @param {(method: string, params?: object) => Promise<object>} call RPC call on the device
+   * @returns {Promise<object>} the completed status
+   */
+  async function completeStatus(shellyId, status, call) {
+    if (!hidesVirtualStatus(status)) {
+      return status;
+    }
+    try {
+      const components = await fetchVirtualComponents(call);
+      rememberComponents(shellyId, components);
+      return mergeVirtualStatus(status, components);
+    } catch (err) {
+      logger.debug(`${shellyId}: Shelly.GetComponents failed (${err.message})`);
+      return status;
+    }
+  }
+
+  /**
    * Fetch the full status of one device, over whichever transport works.
    * @param {object} target the device to reach
    * @param {string} target.shellyId the Shelly device id
@@ -208,7 +262,10 @@ export function createShellyClient({
     if (localFirst) {
       const attempt = await tryLocal(shellyId, host, () => localGetStatus(shellyId, host, gen));
       if (attempt.ok) {
-        return { status: attempt.result, transport: DEVICE_TRANSPORTS.LOCAL };
+        return {
+          status: await completeStatus(shellyId, attempt.result, localCall(shellyId, host)),
+          transport: DEVICE_TRANSPORTS.LOCAL,
+        };
       }
       localError = attempt.error;
     }
@@ -221,7 +278,9 @@ export function createShellyClient({
         const status = await mqttHub.request(shellyId, 'Shelly.GetStatus');
         if (status) {
           return {
-            status,
+            status: await completeStatus(shellyId, status, (method, params) =>
+              mqttHub.request(shellyId, method, params),
+            ),
             transport: DEVICE_TRANSPORTS.LOCAL,
             ...(localFirst ? { degraded: true, message: TRANSPORT_MESSAGES.MQTT_FALLBACK } : {}),
           };
@@ -259,7 +318,10 @@ export function createShellyClient({
     if (!localFirst && host) {
       const attempt = await tryLocal(shellyId, host, () => localGetStatus(shellyId, host, gen));
       if (attempt.ok) {
-        return { status: attempt.result, transport: DEVICE_TRANSPORTS.LOCAL };
+        return {
+          status: await completeStatus(shellyId, attempt.result, localCall(shellyId, host)),
+          transport: DEVICE_TRANSPORTS.LOCAL,
+        };
       }
       throw attempt.error;
     }
@@ -325,5 +387,143 @@ export function createShellyClient({
     throw localError || new Error(`${shellyId}: no usable transport to send the command`);
   }
 
-  return { getStatus, setSwitch, reset, rpcFor };
+  /**
+   * Call one Gen2+ RPC method over the local network: HTTP first, then the MQTT
+   * broker.
+   *
+   * There is no cloud step on purpose: the Shelly Cloud control API only knows
+   * relays and covers, so a `Number.Set` or a paginated `Shelly.GetComponents`
+   * cannot be relayed through it. Failing with that reason beats pretending.
+   *
+   * @param {object} target the device to reach
+   * @param {string} target.shellyId the Shelly device id
+   * @param {string} [target.host] last known IP address or hostname
+   * @param {string} method RPC method name
+   * @param {object} [params] method parameters
+   * @param {object} [options] behaviour options
+   * @param {boolean} [options.command] a user action: probe even a parked device
+   * @returns {Promise<{result: unknown, transport: string}>} the answer and its transport
+   */
+  async function callRpc({ shellyId, host }, method, params, { command = false } = {}) {
+    const viaMqtt = Boolean(mqttHub && mqttHub.knows(shellyId));
+    let localError;
+    if (host) {
+      // Same rule as `setSwitch`: a command with no other path pays the timeout
+      // rather than being refused because the poll loop parked the device.
+      const attempt = await tryLocal(
+        shellyId,
+        host,
+        () => rpcFor(shellyId, host).call(method, params),
+        { bypassCooldown: command && !viaMqtt },
+      );
+      if (attempt.ok) {
+        return { result: attempt.result, transport: DEVICE_TRANSPORTS.LOCAL };
+      }
+      localError = attempt.error;
+    }
+
+    if (viaMqtt) {
+      try {
+        const result = await mqttHub.request(shellyId, method, params);
+        return { result, transport: DEVICE_TRANSPORTS.LOCAL };
+      } catch (mqttError) {
+        logger.debug(`${shellyId}: MQTT ${method} failed (${mqttError.message})`);
+        localError = localError || mqttError;
+      }
+    }
+
+    throw (
+      localError ||
+      new Error(
+        `${shellyId}: ${method} needs the local network or MQTT — the Shelly Cloud cannot relay it`,
+      )
+    );
+  }
+
+  /**
+   * Remember the virtual-component metadata read by a discovery.
+   * @param {string} shellyId the Shelly device id
+   * @param {Record<string, object>} components metadata per component key
+   */
+  function rememberComponents(shellyId, components) {
+    componentsCache.set(shellyId, components);
+    componentsFailedAt.delete(shellyId);
+  }
+
+  /**
+   * The virtual-component metadata already known for a device, without any I/O
+   * (the push path is synchronous and must never wait on the network).
+   * @param {string} shellyId the Shelly device id
+   * @returns {Record<string, object>|undefined} metadata per component key
+   */
+  function cachedComponents(shellyId) {
+    return componentsCache.get(shellyId);
+  }
+
+  /**
+   * The virtual-component metadata of a device, read once if not known yet
+   * (typically after a container restart, before any re-scan).
+   *
+   * Never throws: without metadata a device keeps its features and values, so
+   * a failure costs presentation details, not the device. A failure is
+   * remembered for a while so a device that cannot answer is not asked again
+   * on every cycle.
+   *
+   * @param {object} target the device to reach
+   * @returns {Promise<Record<string, object>|undefined>} metadata per component key
+   */
+  async function componentsFor(target) {
+    const cached = componentsCache.get(target.shellyId);
+    if (cached) {
+      return cached;
+    }
+    const failedAt = componentsFailedAt.get(target.shellyId);
+    if (failedAt !== undefined && now() - failedAt < COMPONENTS_RETRY_MS) {
+      return undefined;
+    }
+    try {
+      const components = await fetchVirtualComponents(
+        async (method, params) => (await callRpc(target, method, params)).result,
+      );
+      rememberComponents(target.shellyId, components);
+      return components;
+    } catch (err) {
+      componentsFailedAt.set(target.shellyId, now());
+      logger.debug(`${target.shellyId}: Shelly.GetComponents failed (${err.message})`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Write a virtual component (`Number.Set`, `Boolean.Set`).
+   *
+   * Addressed by `id`, which every virtual component has; the `owner` + `role`
+   * addressing of the HVAC documentation only works for components that carry
+   * a role.
+   *
+   * @param {object} target the device to reach
+   * @param {string} family `number` or `boolean`
+   * @param {number} id component index
+   * @param {number|boolean} value value to write
+   * @returns {Promise<string>} the transport that carried the command
+   */
+  async function setVirtual(target, family, id, value) {
+    const method = VIRTUAL_SET_METHOD[family];
+    if (!method) {
+      throw new Error(`${target.shellyId}: ${family}:${id} cannot be written`);
+    }
+    const { transport } = await callRpc(target, method, { id, value }, { command: true });
+    return transport;
+  }
+
+  return {
+    getStatus,
+    setSwitch,
+    setVirtual,
+    componentsFor,
+    cachedComponents,
+    rememberComponents,
+    reset,
+    rpcFor,
+  };
 }

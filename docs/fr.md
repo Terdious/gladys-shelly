@@ -197,19 +197,28 @@ n'expose qu'un On/Off, un Pro 1PM expose aussi puissance, tension, courant et
 énergie — et un Shelly sorti après cette version fonctionne s'il parle le même
 vocabulaire.
 
-| Composant Shelly      | Ce que vous obtenez dans Gladys                                                                                                         |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `switch:N`            | On/Off (pilotable), puissance (W), tension (V), courant (A), énergie totale (kWh), température interne (°C)                             |
-| `em:N` (triphasé)     | Par phase L1/L2/L3 : puissance active (W), puissance apparente (VA), tension (V), courant (A) — plus les totaux et le courant de neutre |
-| `emdata:N`            | Énergie totale et énergie réinjectée, par phase et au total (kWh)                                                                       |
-| `em1:N` / `em1data:N` | Équivalents monophasés (Shelly Pro EM, 1PM Mini Gen3)                                                                                   |
-| `pm1:N`               | Puissance, tension, courant, énergie d'un compteur seul (PM Mini)                                                                       |
-| `temperature:N`       | Température (°C)                                                                                                                        |
-| `humidity:N`          | Humidité (%)                                                                                                                            |
-| `devicepower:N`       | Niveau de batterie (%)                                                                                                                  |
+| Composant Shelly         | Ce que vous obtenez dans Gladys                                                                                                                                                                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `switch:N`               | On/Off (pilotable), puissance (W), tension (V), courant (A), énergie totale (kWh), température interne (°C)                                                                                                                                                                                                                        |
+| `em:N` (triphasé)        | Par phase L1/L2/L3 : puissance active (W), puissance apparente (VA), tension (V), courant (A) — plus les totaux et le courant de neutre                                                                                                                                                                                            |
+| `emdata:N`               | Énergie totale et énergie réinjectée, par phase et au total (kWh)                                                                                                                                                                                                                                                                  |
+| `em1:N` / `em1data:N`    | Équivalents monophasés (Shelly Pro EM, 1PM Mini Gen3)                                                                                                                                                                                                                                                                              |
+| `pm1:N`                  | Puissance, tension, courant, énergie d'un compteur seul (PM Mini)                                                                                                                                                                                                                                                                  |
+| `temperature:N`          | Température (°C)                                                                                                                                                                                                                                                                                                                   |
+| `humidity:N`             | Humidité (%)                                                                                                                                                                                                                                                                                                                       |
+| `devicepower:N`          | Niveau de batterie (%)                                                                                                                                                                                                                                                                                                             |
+| `number:N` / `boolean:N` | Composants virtuels des appareils « Powered by Shelly » (LinkedGo ST1820…) : consigne du thermostat (pilotable, bornée à la plage et au pas de l'appareil), température (°C) et humidité (%) de la pièce, options marche/arrêt comme « Enable thermostat » ou « Child lock » (pilotables si l'appareil l'autorise), état du relais |
 
 Matériel validé par conception sur les payloads réels : **Shelly Pro 3EM**,
-**Shelly Pro 4PM**, **Shelly Plus Plug S**.
+**Shelly Pro 4PM**, **Shelly Plus Plug S**, **LinkedGo ST1820** (composants
+virtuels).
+
+Les composants virtuels sont nommés et typés d'après la description que
+l'appareil donne de lui-même (`Shelly.GetComponents`, relue à chaque scan) :
+le rôle qu'il déclare quand il y en a un (`target_temperature` → consigne de
+thermostat), sinon le nom, l'unité et les droits d'accès. Les composants
+`enum:N` ne sont pas encore pris en charge. Piloter un composant virtuel
+nécessite le réseau local ou MQTT — le Shelly Cloud ne sait pas le relayer.
 
 > **Pas encore supportés :** volets roulants (`cover`), éclairages variables
 > (`light`), entrées (`input`). Voir la

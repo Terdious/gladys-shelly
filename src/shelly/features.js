@@ -18,8 +18,9 @@ import {
   DEVICE_FEATURE_UNITS,
 } from '@gladysassistant/integration-sdk';
 
-import { COMPONENT, EM_PHASES } from './constants.js';
+import { COMPONENT, EM_PHASES, VIRTUAL_SUFFIX } from './constants.js';
 import { buildFeatureSelector } from './selector.js';
+import { isWritableConfig } from './virtualComponents.js';
 
 /**
  * Round a number to a fixed number of decimals, passing through anything that
@@ -532,6 +533,172 @@ function devicePowerSpecs(id) {
   ];
 }
 
+/**
+ * Semantic roles of virtual components (`attrs.role`, set by the service that
+ * owns the component — NOT `config.role`, which the ST1820 leaves absent).
+ *
+ * A role is the device saying what a value means, so it beats every guess made
+ * from a name or a unit. Only `target_temperature` has been observed on a real
+ * ST1820; the others follow the naming of the Shelly HVAC (ST802)
+ * documentation. A role missing here is not an error: the component falls back
+ * to the generic mapping below. Add a role by adding a line.
+ */
+export const VIRTUAL_ROLES = {
+  current_temperature: {
+    family: COMPONENT.NUMBER,
+    label: 'Temperature',
+    category: DEVICE_FEATURE_CATEGORIES.TEMPERATURE_SENSOR,
+    type: DEVICE_FEATURE_TYPES.SENSOR.DECIMAL,
+    unit: DEVICE_FEATURE_UNITS.CELSIUS,
+    min: -50,
+    max: 150,
+    readOnly: true,
+  },
+  current_humidity: {
+    family: COMPONENT.NUMBER,
+    label: 'Humidity',
+    category: DEVICE_FEATURE_CATEGORIES.HUMIDITY_SENSOR,
+    type: DEVICE_FEATURE_TYPES.SENSOR.DECIMAL,
+    unit: DEVICE_FEATURE_UNITS.PERCENT,
+    min: 0,
+    max: 100,
+    readOnly: true,
+  },
+  target_temperature: {
+    family: COMPONENT.NUMBER,
+    label: 'Target temperature',
+    category: DEVICE_FEATURE_CATEGORIES.THERMOSTAT,
+    type: DEVICE_FEATURE_TYPES.THERMOSTAT.TARGET_TEMPERATURE,
+    unit: DEVICE_FEATURE_UNITS.CELSIUS,
+    min: 5,
+    max: 35,
+  },
+  enable: {
+    family: COMPONENT.BOOLEAN,
+    label: 'Enable',
+    category: DEVICE_FEATURE_CATEGORIES.SWITCH,
+    type: DEVICE_FEATURE_TYPES.SWITCH.BINARY,
+  },
+  child_lock: {
+    family: COMPONENT.BOOLEAN,
+    label: 'Child lock',
+    category: DEVICE_FEATURE_CATEGORIES.CHILD_LOCK,
+    type: DEVICE_FEATURE_TYPES.CHILD_LOCK.BINARY,
+  },
+};
+
+/** `config.meta.ui.unit` label -> Gladys unit. An unlisted label is left unset. */
+const VIRTUAL_UNITS = {
+  '°C': DEVICE_FEATURE_UNITS.CELSIUS,
+  '°F': DEVICE_FEATURE_UNITS.FAHRENHEIT,
+  '%': DEVICE_FEATURE_UNITS.PERCENT,
+  W: DEVICE_FEATURE_UNITS.WATT,
+  V: DEVICE_FEATURE_UNITS.VOLT,
+  A: DEVICE_FEATURE_UNITS.AMPERE,
+  kWh: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
+};
+
+const TEMPERATURE_UNITS = [DEVICE_FEATURE_UNITS.CELSIUS, DEVICE_FEATURE_UNITS.FAHRENHEIT];
+
+/**
+ * Pick a finite number, or the fallback.
+ * @param {unknown} value candidate
+ * @param {number} fallback value used when the candidate is unusable
+ * @returns {number} the number
+ */
+function finiteOr(value, fallback) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * Build the feature spec of ONE virtual component (`number:N`, `boolean:N`).
+ *
+ * The key — and so the external id — depends on the component key alone, never
+ * on the metadata: a component renamed in the app, or a scan that could not
+ * read `Shelly.GetComponents`, must land on the SAME feature. The metadata only
+ * decides how the feature is presented (name, category, unit, range) and
+ * whether it is writable.
+ *
+ * @param {string} family `number` or `boolean`
+ * @param {number} id component index
+ * @param {{config?: object, attrs?: object}} [meta] the component metadata, when known
+ * @returns {object[]} the feature specs (empty for an unsupported family)
+ */
+function virtualSpecs(family, id, meta) {
+  const config = meta?.config || {};
+  const role = VIRTUAL_ROLES[meta?.attrs?.role];
+  const semantic = role && role.family === family ? role : undefined;
+  const writable = isWritableConfig(config) && !semantic?.readOnly;
+  const configName = typeof config.name === 'string' ? config.name.trim() : '';
+  const name =
+    configName || semantic?.label || `${family[0].toUpperCase()}${family.slice(1)} ${id}`;
+  const key = `${family}:${id}:${VIRTUAL_SUFFIX[family]}`;
+
+  if (family === COMPONENT.BOOLEAN) {
+    return [
+      {
+        key,
+        // Every on/off state rides the real-time lane, read-only or not: the
+        // heating relay clicking in is exactly what a human expects to see now.
+        realtime: true,
+        ownName: true,
+        name,
+        category: semantic?.category || DEVICE_FEATURE_CATEGORIES.SWITCH,
+        type: semantic?.type || DEVICE_FEATURE_TYPES.SWITCH.BINARY,
+        min: 0,
+        max: 1,
+        read_only: !writable,
+        has_feedback: writable,
+        required: 'value',
+        read: (status) => (typeof status.value === 'boolean' ? (status.value ? 1 : 0) : undefined),
+      },
+    ];
+  }
+
+  if (family !== COMPONENT.NUMBER) {
+    return [];
+  }
+
+  const unit = VIRTUAL_UNITS[config.meta?.ui?.unit] || semantic?.unit;
+  let presentation = semantic;
+  if (!presentation) {
+    // No role: the unit is the next best witness. A read-only °C is a
+    // temperature reading and a writable one a setpoint; anything else is a
+    // plain number Gladys can chart but not interpret.
+    if (TEMPERATURE_UNITS.includes(unit)) {
+      presentation = writable
+        ? VIRTUAL_ROLES.target_temperature
+        : VIRTUAL_ROLES.current_temperature;
+    } else if (unit === DEVICE_FEATURE_UNITS.PERCENT && !writable) {
+      presentation = VIRTUAL_ROLES.current_humidity;
+    } else {
+      presentation = {
+        category: DEVICE_FEATURE_CATEGORIES.UNKNOWN,
+        type: DEVICE_FEATURE_TYPES.UNKNOWN.UNKNOWN,
+        min: -1000000,
+        max: 1000000,
+      };
+    }
+  }
+
+  return [
+    {
+      key,
+      ownName: true,
+      name,
+      category: presentation.category,
+      type: presentation.type,
+      ...(unit ? { unit } : {}),
+      min: finiteOr(config.min, presentation.min),
+      max: finiteOr(config.max, presentation.max),
+      read_only: !writable,
+      has_feedback: writable,
+      required: 'value',
+      read: (status) => round(status.value, 2),
+    },
+  ];
+}
+
 /** Component family -> spec builder. An unlisted family is simply ignored. */
 const SPEC_BUILDERS = {
   [COMPONENT.SWITCH]: switchSpecs,
@@ -554,10 +721,15 @@ const SPEC_BUILDERS = {
  * released after this code was written still maps correctly as long as it
  * speaks the documented component vocabulary.
  *
+ * Virtual components (`number:N`, `boolean:N`) are part of the same pass: the
+ * status decides THAT they exist, the optional metadata decides how they are
+ * presented. `enum:N` is not mapped yet (Gladys has no generic fit for it).
+ *
  * @param {object} status the `Shelly.GetStatus` result
+ * @param {Record<string, {config?: object, attrs?: object}>} [components] virtual-component metadata
  * @returns {object[]} the specs supported by this device
  */
-export function buildFeatureSpecs(status) {
+export function buildFeatureSpecs(status, components = undefined) {
   if (!status || typeof status !== 'object') {
     return [];
   }
@@ -565,7 +737,10 @@ export function buildFeatureSpecs(status) {
   return Object.entries(status)
     .flatMap(([componentKey, componentStatus]) => {
       const [family, rawId] = componentKey.split(':');
-      const builder = SPEC_BUILDERS[family];
+      const builder =
+        family in VIRTUAL_SUFFIX
+          ? (id) => virtualSpecs(family, id, components?.[componentKey])
+          : SPEC_BUILDERS[family];
       if (!builder || rawId === undefined || componentStatus == null) {
         // `sys`, `wifi`, `cloud`, `ble`, `mqtt`… carry no user-facing value,
         // and an unknown family is a device newer than this code: skip both

@@ -189,19 +189,28 @@ hard-coded model table: a Shelly Pro 1 (no metering) only exposes an On/Off, a
 Pro 1PM also exposes power, voltage, current and energy — and a Shelly released
 after this version works as long as it speaks the same vocabulary.
 
-| Shelly component      | What you get in Gladys                                                                                                        |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `switch:N`            | On/Off (controllable), power (W), voltage (V), current (A), total energy (kWh), internal temperature (°C)                     |
-| `em:N` (three-phase)  | Per L1/L2/L3 phase: active power (W), apparent power (VA), voltage (V), current (A) — plus the totals and the neutral current |
-| `emdata:N`            | Total and returned energy, per phase and total (kWh)                                                                          |
-| `em1:N` / `em1data:N` | Single-phase equivalents (Shelly Pro EM, 1PM Mini Gen3)                                                                       |
-| `pm1:N`               | Power, voltage, current and energy of a standalone meter (PM Mini)                                                            |
-| `temperature:N`       | Temperature (°C)                                                                                                              |
-| `humidity:N`          | Humidity (%)                                                                                                                  |
-| `devicepower:N`       | Battery level (%)                                                                                                             |
+| Shelly component         | What you get in Gladys                                                                                                                                                                                                                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `switch:N`               | On/Off (controllable), power (W), voltage (V), current (A), total energy (kWh), internal temperature (°C)                                                                                                                                                                                              |
+| `em:N` (three-phase)     | Per L1/L2/L3 phase: active power (W), apparent power (VA), voltage (V), current (A) — plus the totals and the neutral current                                                                                                                                                                          |
+| `emdata:N`               | Total and returned energy, per phase and total (kWh)                                                                                                                                                                                                                                                   |
+| `em1:N` / `em1data:N`    | Single-phase equivalents (Shelly Pro EM, 1PM Mini Gen3)                                                                                                                                                                                                                                                |
+| `pm1:N`                  | Power, voltage, current and energy of a standalone meter (PM Mini)                                                                                                                                                                                                                                     |
+| `temperature:N`          | Temperature (°C)                                                                                                                                                                                                                                                                                       |
+| `humidity:N`             | Humidity (%)                                                                                                                                                                                                                                                                                           |
+| `devicepower:N`          | Battery level (%)                                                                                                                                                                                                                                                                                      |
+| `number:N` / `boolean:N` | Virtual components of "Powered by Shelly" devices (LinkedGo ST1820…): thermostat setpoint (controllable, clamped to the device range and step), room temperature (°C), humidity (%), on/off options such as "Enable thermostat" or "Child lock" (controllable when the device allows it), relay status |
 
 Hardware validated by design against real payloads: **Shelly Pro 3EM**,
-**Shelly Pro 4PM**, **Shelly Plus Plug S**.
+**Shelly Pro 4PM**, **Shelly Plus Plug S**, **LinkedGo ST1820** (virtual
+components).
+
+Virtual components are named and typed from the device's own description
+(`Shelly.GetComponents`, read at every scan): the semantic role the device
+declares when there is one (`target_temperature` → thermostat setpoint), the
+name, unit and access otherwise. `enum:N` components are not mapped yet.
+Writing a virtual component needs the local network or MQTT — the Shelly Cloud
+cannot relay it.
 
 > **Not supported yet:** roller shutters (`cover`), dimmable lights (`light`),
 > inputs (`input`). See the [roadmap](./ROADMAP.md).

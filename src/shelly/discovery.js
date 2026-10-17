@@ -39,6 +39,59 @@ import { buildDevice, readGeneration, readHost, readShellyId } from './deviceMap
 import { getGen1Settings, getGen1Status } from './gen1/rest.js';
 import { normalizeGen1Info, normalizeGen1Settings, normalizeGen1Status } from './gen1/normalize.js';
 import { getShellyInfo, ShellyAuthError } from './rpc.js';
+import {
+  fetchVirtualComponents,
+  hasVirtualComponents,
+  hidesVirtualStatus,
+  mergeVirtualStatus,
+} from './virtualComponents.js';
+
+/**
+ * Read the virtual-component metadata of a device whose status reports any —
+ * or that runs a service hiding them from `Shelly.GetStatus` — and hand it to
+ * the router's cache so telemetry and commands use the same.
+ *
+ * Returns the status completed with the hidden components: for an ST1820 that
+ * is what makes its features exist at all. For a device that does report them,
+ * a failure only costs presentation (the features are named from
+ * `Shelly.GetConfig`).
+ *
+ * @param {object} params inputs
+ * @param {string} params.shellyId the Shelly device id
+ * @param {object} params.status the `Shelly.GetStatus` result
+ * @param {(method: string, params?: object) => Promise<object>} params.call RPC call on the device
+ * @param {object} [params.client] the transport router (holds the cache)
+ * @returns {Promise<{status: object, components?: Record<string, object>}>} the
+ *   completed status, and the metadata per component key when it could be read
+ */
+async function readVirtualComponents({ shellyId, status, call, client }) {
+  const hidden = hidesVirtualStatus(status);
+  if (!hidden && !hasVirtualComponents(status)) {
+    return { status };
+  }
+  let components;
+  try {
+    components = await fetchVirtualComponents(call);
+    if (client && typeof client.rememberComponents === 'function') {
+      client.rememberComponents(shellyId, components);
+    }
+  } catch (err) {
+    logger.info(
+      hidden
+        ? `${shellyId}: could not read Shelly.GetComponents (${err.message}) — its ` +
+            'service values are only served there, so it has no feature until the next scan'
+        : `${shellyId}: could not read Shelly.GetComponents (${err.message}) — its virtual ` +
+            'components get plainer names until the next scan',
+    );
+    return { status };
+  }
+  const completed = mergeVirtualStatus(status, components);
+  const enums = Object.keys(completed).filter((key) => key.startsWith('enum:'));
+  if (enums.length > 0) {
+    logger.info(`${shellyId}: ${enums.join(', ')} not mapped yet (no Gladys feature fits an enum)`);
+  }
+  return { status: completed, components };
+}
 
 /**
  * Whether an mDNS record is worth probing, given the service it announces on.
@@ -292,14 +345,22 @@ export async function probeHost({ gladys, client, config, host, fetchImpl = fetc
     logger.debug(`${host} (${info.id}) did not answer Shelly.GetConfig: ${err.message}`);
   }
 
+  const virtual = await readVirtualComponents({
+    shellyId: info.id,
+    status,
+    call: (method, params) => rpc.call(method, params),
+    client,
+  });
+
   return {
     host,
     device: buildDevice({
       info,
-      status,
+      status: virtual.status,
       config: deviceConfig,
       host,
       externalIds: gladys.externalIds(DEVICE_TYPE, info.id),
+      components: virtual.components,
     }),
   };
 }
@@ -341,10 +402,11 @@ export function forgetSeenHosts() {
  * @param {object} params inputs
  * @param {object} params.gladys the SDK instance
  * @param {object} params.mqttHub the MQTT hub
+ * @param {object} [params.client] the transport router (virtual-component cache)
  * @param {Map<string, object>} params.found devices already found, keyed by external id
  * @returns {Promise<number>} how many devices MQTT added
  */
-async function probeMqttDevices({ gladys, mqttHub, found }) {
+async function probeMqttDevices({ gladys, client, mqttHub, found }) {
   let added = 0;
   for (const { shellyId } of mqttHub.devices()) {
     const externalIds = gladys.externalIds(DEVICE_TYPE, shellyId);
@@ -360,16 +422,29 @@ async function probeMqttDevices({ gladys, mqttHub, found }) {
       if (!status) {
         continue;
       }
+      const virtual = await readVirtualComponents({
+        shellyId,
+        status,
+        call: (method, params) => mqttHub.request(shellyId, method, params),
+        client,
+      });
       found.set(
         externalIds.device,
         buildDevice({
-          info: { id: shellyId, model: info?.model, gen: info?.gen ?? 2, name: info?.name },
-          status,
+          info: {
+            id: shellyId,
+            model: info?.model,
+            gen: info?.gen ?? 2,
+            name: info?.name,
+            jwt: info?.jwt,
+          },
+          status: virtual.status,
           config: deviceConfig,
           // No host on purpose: this device is reached through the broker. A
           // later local discovery fills the address in and it upgrades itself.
           host: undefined,
           externalIds,
+          components: virtual.components,
         }),
       );
       added += 1;
@@ -496,7 +571,7 @@ export async function discoverDevices({
   // this catches exactly the devices mDNS keeps losing — and it needs no IP
   // address at all, since both reads and commands go through the broker.
   if (mqttHub) {
-    const overMqtt = await probeMqttDevices({ gladys, mqttHub, found: byExternalId });
+    const overMqtt = await probeMqttDevices({ gladys, client, mqttHub, found: byExternalId });
     if (overMqtt > 0) {
       logger.info(`Discovery: ${overMqtt} device(s) found over MQTT that mDNS did not announce`);
       await reportProgress();

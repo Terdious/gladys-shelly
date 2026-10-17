@@ -14,7 +14,9 @@
 import { logger } from '@gladysassistant/integration-sdk';
 
 import { readHost, readShellyId } from './deviceMapping.js';
-import { COMPONENT } from './constants.js';
+import { COMPONENT, VIRTUAL_SUFFIX } from './constants.js';
+import { VIRTUAL_ROLES } from './features.js';
+import { isWritableConfig, prepareNumberValue } from './virtualComponents.js';
 
 /**
  * Parse the component coordinates out of a feature external id.
@@ -40,6 +42,66 @@ export function parseFeatureKey(externalId) {
 }
 
 /**
+ * Write a virtual component (`number:N` -> `Number.Set`, `boolean:N` ->
+ * `Boolean.Set`), e.g. the setpoint or the on/off of an ST1820 thermostat.
+ *
+ * The device's own metadata is the authority on what may be written: a
+ * component whose `access` has no `w`, or whose role is a measurement, is
+ * refused here rather than sent to a device that would refuse it with a less
+ * readable error. Without metadata (never read on this run), the Gladys
+ * feature — built from that same metadata at discovery — stands in for it.
+ *
+ * @param {object} deps injected dependencies
+ * @param {object} deps.gladys the SDK instance
+ * @param {object} deps.client the transport router
+ * @param {object} command the command, already resolved to a component
+ * @returns {Promise<void>} resolves once the device acknowledged the command
+ */
+async function setVirtualValue({ gladys, client }, command) {
+  const { shellyId, device, feature, family, index, value } = command;
+  const componentKey = `${family}:${index}`;
+  const target = { shellyId, host: readHost(device) };
+
+  const components =
+    typeof client.componentsFor === 'function' ? await client.componentsFor(target) : undefined;
+  const meta = components?.[componentKey];
+  const role = VIRTUAL_ROLES[meta?.attrs?.role];
+  const writable = meta
+    ? isWritableConfig(meta.config) && !role?.readOnly
+    : feature.read_only === false;
+  if (!writable) {
+    throw new Error(`Feature ${feature.external_id} is read-only on the device (${componentKey})`);
+  }
+
+  let sent;
+  let published;
+  if (family === COMPONENT.NUMBER) {
+    const requested = Number(value);
+    if (!Number.isFinite(requested)) {
+      throw new Error(`Feature ${feature.external_id}: ${value} is not a number`);
+    }
+    const config = meta?.config || {};
+    sent = prepareNumberValue(requested, {
+      min: Number.isFinite(config.min) ? config.min : feature.min,
+      max: Number.isFinite(config.max) ? config.max : feature.max,
+      step: config.meta?.ui?.step,
+    });
+    published = sent;
+  } else {
+    sent = Number(value) === 1;
+    published = sent ? 1 : 0;
+  }
+
+  const transport = await client.setVirtual(target, family, index, sent);
+  logger.info(`${shellyId} ${componentKey} -> ${sent} (over ${transport})`);
+
+  // Optimistic feedback, with the value the device was actually SENT: after a
+  // clamp or a step rounding, echoing the request would show a setpoint the
+  // thermostat does not have.
+  await gladys.publishState(feature.external_id, published);
+}
+
+/**
  * Apply a value the user set on a feature.
  * @param {object} deps injected dependencies
  * @param {object} deps.gladys the SDK instance
@@ -62,6 +124,10 @@ export async function setDeviceValue({ gladys, client }, { device, feature, valu
   }
 
   const { family, index, suffix } = parsed;
+  if (VIRTUAL_SUFFIX[family] === suffix) {
+    await setVirtualValue({ gladys, client }, { shellyId, device, feature, family, index, value });
+    return;
+  }
   if (family !== COMPONENT.SWITCH || suffix !== 'binary') {
     // Everything else discovered today is a read-only measurement; a writable
     // family added later gets its branch here.
