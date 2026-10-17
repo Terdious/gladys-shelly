@@ -28,6 +28,12 @@ function sha256(value) {
  * @param {object} [options.status] payload returned by `Shelly.GetStatus`
  * @param {object} [options.config] payload returned by `Shelly.GetConfig`
  * @param {string} [options.password] when set, RPC requires digest auth
+ * @param {object[]} [options.components] entries served by `Shelly.GetComponents`,
+ *   paginated like a real device (`pageSize` per call)
+ * @param {number} [options.pageSize] `Shelly.GetComponents` page size
+ * @param {boolean} [options.hideVirtual] leave the virtual components out of
+ *   `Shelly.GetStatus`, like the firmware of a real ST1820: their values are
+ *   then only served by `Shelly.GetComponents`
  * @returns {Promise<object>} the running fake device
  */
 export async function startFakeShelly({
@@ -57,6 +63,9 @@ export async function startFakeShelly({
   password = null,
   gen1Status = null,
   gen1Settings = { name: null },
+  components = [],
+  pageSize = 10,
+  hideVirtual = false,
 } = {}) {
   const calls = [];
   const gen1Calls = [];
@@ -158,7 +167,14 @@ export async function startFakeShelly({
       calls.push(request);
 
       if (request.method === 'Shelly.GetStatus') {
-        respond({ id: request.id, result: status });
+        respond({
+          id: request.id,
+          result: hideVirtual
+            ? Object.fromEntries(
+                Object.entries(status).filter(([key]) => !/^(number|boolean|enum):/.test(key)),
+              )
+            : status,
+        });
       } else if (request.method === 'Shelly.GetConfig') {
         respond({ id: request.id, result: config });
       } else if (request.method === 'Switch.Set') {
@@ -170,6 +186,31 @@ export async function startFakeShelly({
         const was = component.output;
         component.output = Boolean(request.params.on);
         respond({ id: request.id, result: { was_on: was } });
+      } else if (request.method === 'Shelly.GetComponents') {
+        const offset = Number(request.params?.offset) || 0;
+        respond({
+          id: request.id,
+          result: {
+            // Live values: a `Number.Set` shows up here, as on a real device.
+            components: components
+              .slice(offset, offset + pageSize)
+              .map((entry) =>
+                entry.key in status ? { ...entry, status: status[entry.key] } : entry,
+              ),
+            cfg_rev: 7,
+            offset,
+            total: components.length,
+          },
+        });
+      } else if (request.method === 'Number.Set' || request.method === 'Boolean.Set') {
+        const family = request.method === 'Number.Set' ? 'number' : 'boolean';
+        const component = status[`${family}:${request.params.id}`];
+        if (!component) {
+          respond({ id: request.id, error: { code: -105, message: 'Argument id not found' } });
+          return;
+        }
+        component.value = request.params.value;
+        respond({ id: request.id, result: null });
       } else {
         respond({ id: request.id, error: { code: 404, message: 'No handler for that method' } });
       }
@@ -436,3 +477,118 @@ export const GEN1_3EM_INFO = {
   discoverable: true,
   num_meters: 3,
 };
+
+/** `GET /shelly` of a LinkedGo ST1820 floor-heating thermostat ("Powered by Shelly"). */
+export const ST1820_INFO = {
+  name: null,
+  id: 'st1820-70af09fce0c8',
+  mac: '70AF09FCE0C8',
+  model: 'S3XT-0S',
+  gen: 3,
+  app: 'XT1+linkedgo-st1820-floor-thermostat',
+  auth_en: false,
+  jwt: { aud: 'XT1', p: 'ST1820', n: 'Starlight Thermostat ST1820' },
+};
+
+/**
+ * Status document of an ST1820: nothing from the classic vocabulary, only
+ * virtual components owned by `service:0`. This is the COMPLETED document the
+ * mapper sees: the real firmware (2.0.1) leaves every `number:N` / `boolean:N`
+ * out of `Shelly.GetStatus` and serves them in `Shelly.GetComponents` only —
+ * start the fake with `hideVirtual: true` to reproduce that.
+ */
+export const ST1820_STATUS = {
+  ble: {},
+  bthome: {},
+  cloud: { connected: true },
+  mqtt: { connected: false },
+  'service:0': { state: 'running', dev_mode: false },
+  sys: { mac: '70AF09FCE0C8', uptime: 12345 },
+  wifi: { sta_ip: '192.168.1.111', status: 'got ip', rssi: -60 },
+  ws: { connected: false },
+  'number:200': { value: 48, source: 'sys', last_update_ts: 1792253300 },
+  'number:201': { value: 24.6, source: 'sys', last_update_ts: 1792253300 },
+  'number:202': { value: 20, source: 'rpc', last_update_ts: 1792253353 },
+  'boolean:200': { value: false, source: 'sys', last_update_ts: 1792253300 },
+  'boolean:201': { value: false, source: 'sys', last_update_ts: 1792253300 },
+  'boolean:202': { value: true, source: 'sys', last_update_ts: 1792253300 },
+  'boolean:203': { value: false, source: 'sys', last_update_ts: 1792253300 },
+};
+
+/**
+ * Build one virtual-component entry of `Shelly.GetComponents`.
+ * @param {string} key component key
+ * @param {object} config component config (merged over the common fields)
+ * @param {string} [role] `attrs.role`, when the device sets one
+ * @returns {object} the entry
+ */
+function virtualEntry(key, config, role) {
+  const id = Number(key.split(':')[1]);
+  return {
+    key,
+    status: ST1820_STATUS[key],
+    config: { id, persisted: false, owner: 'service:0', ...config },
+    attrs: { owner: 'service:0', ...(role ? { role } : {}) },
+  };
+}
+
+/**
+ * `Shelly.GetComponents` of an ST1820, all 15 entries in device order (the
+ * device serves them 10 + 5). `number:202` is the payload captured from the
+ * real device, `attrs.role` included; the roles of the other components were
+ * NOT captured, so they are left out here — which is exactly the fallback path
+ * (name + unit + access) the mapping must handle.
+ */
+export const ST1820_COMPONENTS = [
+  { key: 'ble', status: {}, config: { enable: true } },
+  virtualEntry('boolean:200', { name: 'Anti-freeze', default_value: false, access: 'crw' }),
+  virtualEntry('boolean:201', { name: 'Child lock', default_value: false, access: 'crw' }),
+  virtualEntry('boolean:202', { name: 'Enable thermostat', default_value: true, access: 'crw' }),
+  virtualEntry('boolean:203', { name: 'C1C2 relay status', default_value: false, access: 'cr' }),
+  { key: 'bthome', status: {}, config: {} },
+  { key: 'cloud', status: { connected: true }, config: { enable: true } },
+  { key: 'mqtt', status: { connected: false }, config: { enable: false } },
+  virtualEntry('number:200', {
+    name: 'Current humidity',
+    min: 0,
+    max: 100,
+    meta: { ui: { view: 'label', unit: '%', step: 1 } },
+    access: 'cr',
+  }),
+  virtualEntry('number:201', {
+    name: 'Current temperature',
+    min: -20,
+    max: 60,
+    meta: { ui: { view: 'label', unit: '°C', step: 0.1 } },
+    access: 'cr',
+  }),
+  virtualEntry(
+    'number:202',
+    {
+      name: 'Target temperature',
+      min: 15,
+      max: 35,
+      meta: { ui: { view: 'slider', unit: '°C', step: 0.5 }, cloud: ['log'] },
+      default_value: 25,
+      access: 'crw',
+    },
+    'target_temperature',
+  ),
+  {
+    key: 'service:0',
+    status: ST1820_STATUS['service:0'],
+    config: {
+      id: 0,
+      temp_unit: 'C',
+      temp_range: [15, 35],
+      temp_hysteresis: 10,
+      power_down_memory: true,
+      temp_anti_freeze: 5,
+      temp_offset: 0,
+      humidity_offset: 0,
+    },
+  },
+  { key: 'sys', status: {}, config: { device: { name: null } } },
+  { key: 'wifi', status: {}, config: {} },
+  { key: 'ws', status: {}, config: { enable: false } },
+];

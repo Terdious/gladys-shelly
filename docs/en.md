@@ -196,26 +196,34 @@ hard-coded model table: a Shelly Pro 1 (no metering) only exposes an On/Off, a
 Pro 1PM also exposes power, voltage, current and energy — and a Shelly released
 after this version works as long as it speaks the same vocabulary.
 
-| Shelly component              | What you get in Gladys                                                                                                        |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `switch:N`                    | On/Off (controllable), power (W), voltage (V), current (A), total energy (kWh), internal temperature (°C)                     |
-| `cover:N`                     | Shutter open / stop / close (controllable), position (%) once calibrated, power, voltage, current, energy, temperature        |
-| `light:N`                     | Light on/off and brightness (controllable), power and energy                                                                  |
-| `rgb:N` / `rgbw:N`            | Same as `light:N`, plus the colour (controllable)                                                                             |
-| `cct:N`                       | Same as `light:N`, plus the colour temperature (controllable)                                                                 |
-| `input:N`                     | Switch mode: an input (on/off). Button mode: a button and the "Button pressed" scene trigger. Count mode: a counter           |
-| `em:N` (three-phase)          | Per L1/L2/L3 phase: active power (W), apparent power (VA), voltage (V), current (A) — plus the totals and the neutral current |
-| `emdata:N`                    | Total and returned energy, per phase and total (kWh)                                                                          |
-| `em1:N` / `em1data:N`         | Single-phase equivalents (Shelly Pro EM, 1PM Mini Gen3)                                                                       |
-| `pm1:N`                       | Power, voltage, current and energy of a standalone meter (PM Mini)                                                            |
-| `temperature:N`, `humidity:N` | Temperature (°C), humidity (%)                                                                                                |
-| `devicepower:N`               | Battery level (%)                                                                                                             |
+| Shelly component              | What you get in Gladys                                                                                                                                                                                                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `switch:N`                    | On/Off (controllable), power (W), voltage (V), current (A), total energy (kWh), internal temperature (°C)                                                                                                                                                                                              |
+| `cover:N`                     | Shutter open / stop / close (controllable), position (%) once calibrated, power, voltage, current, energy, temperature                                                                                                                                                                                 |
+| `light:N`                     | Light on/off and brightness (controllable), power and energy                                                                                                                                                                                                                                           |
+| `rgb:N` / `rgbw:N`            | Same as `light:N`, plus the colour (controllable)                                                                                                                                                                                                                                                      |
+| `cct:N`                       | Same as `light:N`, plus the colour temperature (controllable)                                                                                                                                                                                                                                          |
+| `input:N`                     | Switch mode: an input (on/off). Button mode: a button and the "Button pressed" scene trigger. Count mode: a counter                                                                                                                                                                                    |
+| `em:N` (three-phase)          | Per L1/L2/L3 phase: active power (W), apparent power (VA), voltage (V), current (A) — plus the totals and the neutral current                                                                                                                                                                          |
+| `emdata:N`                    | Total and returned energy, per phase and total (kWh)                                                                                                                                                                                                                                                   |
+| `em1:N` / `em1data:N`         | Single-phase equivalents (Shelly Pro EM, 1PM Mini Gen3)                                                                                                                                                                                                                                                |
+| `pm1:N`                       | Power, voltage, current and energy of a standalone meter (PM Mini)                                                                                                                                                                                                                                     |
+| `temperature:N`, `humidity:N` | Temperature (°C), humidity (%)                                                                                                                                                                                                                                                                         |
+| `devicepower:N`               | Battery level (%)                                                                                                                                                                                                                                                                                      |
+| `number:N` / `boolean:N`      | Virtual components of "Powered by Shelly" devices (LinkedGo ST1820…): thermostat setpoint (controllable, clamped to the device range and step), room temperature (°C), humidity (%), on/off options such as "Enable thermostat" or "Child lock" (controllable when the device allows it), relay status |
 
 Hardware validated against real payloads: **Shelly Pro 3EM**, **Shelly Pro
 4PM**, **Shelly Pro 3**, **Shelly Plus 2PM**, **Shelly Plus Plug S** and the
 **Gen1 3EM**. Shutters, lights and inputs follow the documented Shelly API and
 are waiting for your feedback on real hardware: if you own one, please report
 how it behaves (see [Diagnostic](#diagnostic)).
+
+Virtual components are named and typed from the device's own description
+(`Shelly.GetComponents`, read at every scan): the semantic role the device
+declares when there is one (`target_temperature` → thermostat setpoint), the
+name, unit and access otherwise. `enum:N` components are not mapped yet.
+Writing a virtual component needs the local network or MQTT — the Shelly Cloud
+cannot relay it.
 
 On **Gen1**, the same model applies: a Shelly 2.5 in roller mode becomes a
 shutter, a Dimmer, a Bulb or a Duo a light, an RGBW2 in colour mode a colour
