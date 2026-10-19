@@ -28,6 +28,17 @@ export const MDNS_GEN1_SERVICE = '_http._tcp';
  */
 export const GEN1_MDNS_NAME_PREFIX = 'shelly';
 
+/**
+ * Gen1 models that never got the REST + CoIoT v2 firmware the integration
+ * speaks (`/status` and `/settings` differ, or are missing): Shelly 4Pro and
+ * Shelly Sense. They are named and skipped rather than mapped to a device with
+ * no usable feature (issue #7).
+ */
+export const UNSUPPORTED_GEN1_MODELS = {
+  'SHSW-44': 'Shelly 4Pro',
+  'SHSEN-1': 'Shelly Sense',
+};
+
 /** Default HTTP port of a Shelly device. */
 export const DEFAULT_HTTP_PORT = 80;
 
@@ -58,6 +69,8 @@ export const SKIP_REASON = {
   NOT_A_SHELLY: 'not-a-shelly',
   /** A Gen1 Shelly: answers `/shelly`, but speaks a completely different API. */
   GEN1: 'gen1',
+  /** A first-generation model on the old CoAP v1 firmware (Shelly 4Pro, Sense). */
+  UNSUPPORTED_MODEL: 'unsupported-model',
   /** A Gen2+ Shelly that refused `Shelly.GetStatus` without credentials. */
   NEEDS_PASSWORD: 'needs-password',
   /** A Gen2+ Shelly that failed `Shelly.GetStatus` for any other reason. */

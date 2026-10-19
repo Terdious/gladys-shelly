@@ -35,6 +35,7 @@ import {
   MDNS_SERVICE_NAME,
   POLL_CONCURRENCY,
   SKIP_REASON,
+  UNSUPPORTED_GEN1_MODELS,
 } from './constants.js';
 import {
   buildDevice,
@@ -229,7 +230,15 @@ export function describeSkip({ host, reason, detail, model }) {
     case SKIP_REASON.GEN1:
       return `${host}: Gen1 Shelly (${model}) — not supported yet, see the roadmap`;
     case SKIP_REASON.NEEDS_PASSWORD:
-      return `${host}: the device requires a password — set it in the integration configuration`;
+      return (
+        `${host}: the device refused the password — set it in "Device password", or give ` +
+        'this device its own entry in "Per-device passwords"'
+      );
+    case SKIP_REASON.UNSUPPORTED_MODEL:
+      return (
+        `${host}: ${model} is a first-generation model on the old CoAP v1 firmware, ` +
+        'which the integration does not support'
+      );
     case SKIP_REASON.NO_STATUS:
       return `${host}: did not answer Shelly.GetStatus (${detail})`;
     default:
@@ -249,6 +258,10 @@ export function describeSkip({ host, reason, detail, model }) {
  */
 async function probeGen1Host({ gladys, config, host, info, fetchImpl }) {
   const identity = normalizeGen1Info(info);
+  const unsupported = UNSUPPORTED_GEN1_MODELS[String(info?.type || '').toUpperCase()];
+  if (unsupported) {
+    return { host, reason: SKIP_REASON.UNSUPPORTED_MODEL, model: `${unsupported} (${info.type})` };
+  }
   const { username, password } = credentialsFor(config, {
     shellyId: identity.id,
     host,
