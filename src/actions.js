@@ -10,6 +10,7 @@
 
 import { createLogger } from '@gladysassistant/integration-sdk';
 
+import { credentialsFor } from './config.js';
 import { buildDeviceTestReport, buildFleetDiagnostic } from './diagnostic.js';
 import { readGeneration, readHost, readShellyId } from './shelly/deviceMapping.js';
 import { buildFeatureSpecs } from './shelly/features.js';
@@ -61,7 +62,12 @@ export function referenceOf(fields) {
 
 /** Every secret of the configuration, scrubbed from the reports. */
 function secretsOf(config) {
-  return [config.devicePassword, config.cloudAuthKey, config.mqttPassword].filter(Boolean);
+  return [
+    config.devicePassword,
+    config.cloudAuthKey,
+    config.mqttPassword,
+    ...(config.devicePasswords || []).map((entry) => entry.password),
+  ].filter(Boolean);
 }
 
 /**
@@ -189,6 +195,16 @@ export async function testDevice({ gladys, telemetry, getConfig, fetchImpl = fet
   }
   outcome.shellyId = outcome.shellyId || outcome.info.id;
 
+  const credentials = credentialsFor(config, {
+    shellyId: outcome.shellyId,
+    host: outcome.host,
+    mac: outcome.info?.mac,
+  });
+  outcome.passwordSource = credentials.perDevice
+    ? 'its own password (per-device list)'
+    : credentials.password
+      ? 'the shared device password'
+      : 'no password';
   const statusStarted = Date.now();
   try {
     if (outcome.gen >= 2) {
@@ -196,23 +212,23 @@ export async function testDevice({ gladys, telemetry, getConfig, fetchImpl = fet
       // state the telemetry holds for this device.
       const rpc = createRpcClient({
         host: outcome.host,
-        username: config.deviceUsername,
-        password: config.devicePassword,
+        username: credentials.username,
+        password: credentials.password,
         fetchImpl,
       });
       outcome.status = await rpc.call('Shelly.GetStatus');
     } else {
       outcome.rawStatus = await getGen1Status({
         host: outcome.host,
-        username: config.deviceUsername,
-        password: config.devicePassword,
+        username: credentials.username,
+        password: credentials.password,
         fetchImpl,
       });
       outcome.status = normalizeGen1Status(outcome.rawStatus);
     }
     outcome.statusMs = Date.now() - statusStarted;
     outcome.authenticated = Boolean(
-      (outcome.info.auth_en || outcome.info.auth) && config.devicePassword,
+      (outcome.info.auth_en || outcome.info.auth) && credentials.password,
     );
     outcome.featureCount = buildFeatureSpecs(outcome.status).length;
   } catch (err) {

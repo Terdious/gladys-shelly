@@ -13,6 +13,7 @@
 
 import { logger } from '@gladysassistant/integration-sdk';
 
+import { credentialsFor } from '../config.js';
 import { createWsConnection } from './wsRpc.js';
 
 /**
@@ -81,8 +82,8 @@ export function createWsHub({
         shellyId,
         host,
         getCredentials: () => {
-          const { deviceUsername, devicePassword } = getConfig();
-          return { username: deviceUsername, password: devicePassword };
+          const { username, password } = credentialsFor(getConfig(), { shellyId, host });
+          return { username, password };
         },
         onStatus: (status) => {
           try {

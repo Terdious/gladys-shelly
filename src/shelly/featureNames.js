@@ -41,6 +41,10 @@ export const FEATURE_NAMES = {
     input: 'Input',
     button: 'Button',
     counter: 'Counter',
+    leak: 'Water leak',
+    smoke: 'Smoke',
+    opening: 'Opening',
+    illuminance: 'Illuminance',
   },
   fr: {
     on_off: 'Marche/Arrêt',
@@ -67,6 +71,10 @@ export const FEATURE_NAMES = {
     input: 'Entrée',
     button: 'Bouton',
     counter: 'Compteur',
+    leak: "Fuite d'eau",
+    smoke: 'Fumée',
+    opening: 'Ouverture',
+    illuminance: 'Luminosité ambiante',
   },
   de: {
     on_off: 'Ein/Aus',
@@ -93,6 +101,10 @@ export const FEATURE_NAMES = {
     input: 'Eingang',
     button: 'Taster',
     counter: 'Zähler',
+    leak: 'Wasserleck',
+    smoke: 'Rauch',
+    opening: 'Öffnung',
+    illuminance: 'Beleuchtungsstärke',
   },
   es: {
     on_off: 'Encendido/Apagado',
@@ -119,6 +131,10 @@ export const FEATURE_NAMES = {
     input: 'Entrada',
     button: 'Botón',
     counter: 'Contador',
+    leak: 'Fuga de agua',
+    smoke: 'Humo',
+    opening: 'Apertura',
+    illuminance: 'Iluminancia',
   },
 };
 

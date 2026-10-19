@@ -60,11 +60,15 @@ opcionales.
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Direcciones de dispositivos adicionales** | Sus Shelly no se encuentran automáticamente (otra VLAN, mDNS desactivado en el dispositivo o filtrado por el router). Introduzca las IP separadas por comas. |
 | **Usuario de los dispositivos**             | Deje `admin`: es el único usuario que aceptan los Gen2+.                                                                                                     |
-| **Contraseña de los dispositivos**          | Activó la autenticación en sus Shelly. Se usa **una única contraseña** para todos.                                                                           |
+| **Contraseña de los dispositivos**          | Activó la autenticación en sus Shelly. La contraseña común de sus dispositivos (las demás van en el campo siguiente).                                        |
+| **Contraseñas por dispositivo**             | Algunos dispositivos tienen otra contraseña: entradas `dispositivo=contraseña` separadas por `;` (identificador Shelly, MAC o IP).                           |
 
-> ⚠️ Si sus Shelly tienen contraseñas **distintas**, la integración solo llega a
-> los que comparten la contraseña introducida. Unifique la contraseña, o
-> desactive la autenticación en su red local de confianza.
+> 🔑 **¿Contraseñas distintas?** Deje la más común en **Contraseña de los
+> dispositivos**, y liste las demás en **Contraseñas por dispositivo**, como
+> entradas `dispositivo=contraseña` separadas por `;`: el dispositivo es su
+> identificador Shelly (`shellyplus1-a8032ab12345`), su dirección MAC o su
+> dirección IP. Un dispositivo que rechaza su contraseña muestra un punto
+> naranja en su insignia, y la pantalla Configuración lo nombra.
 
 ### Shelly Cloud (respaldo)
 
@@ -210,6 +214,8 @@ vocabulario.
 | `pm1:N`                       | Potencia, tensión, corriente y energía de un medidor independiente (PM Mini)                                                                                                                                                 |
 | `temperature:N`, `humidity:N` | Temperatura (°C), humedad (%)                                                                                                                                                                                                |
 | `devicepower:N`               | Nivel de batería (%)                                                                                                                                                                                                         |
+| `flood:N`, `smoke:N`          | Fuga de agua, humo (Flood y Smoke Gen1, equivalentes Gen2+)                                                                                                                                                                  |
+| `contact:N`, `illuminance:N`  | Apertura puerta/ventana (cerrada / abierta) e iluminancia (lux) de un Door/Window Gen1                                                                                                                                       |
 | `number:N` / `boolean:N`      | Componentes virtuales de los dispositivos «Powered by Shelly» (LinkedGo ST1820…): consigna del termostato (controlable, limitada al rango y paso del dispositivo), temperatura (°C), humedad (%), opciones encendido/apagado |
 
 Hardware validado con datos reales: **Shelly Pro 3EM**, **Shelly Pro 4PM**,
@@ -222,9 +228,19 @@ Los componentes virtuales se nombran y tipifican según la descripción que el d
 
 En **Gen1** se aplica el mismo modelo: un Shelly 2.5 en modo persiana se
 convierte en persiana, un Dimmer, una Bulb o un Duo en luz, un RGBW2 en modo
-color en luz de color, y las entradas de un i3 en entradas. Los Gen1 no tienen
-eventos de botón accesibles desde un contenedor (viajan por multicast CoIoT):
-solo se informa del estado encendido/apagado de sus entradas.
+color en luz de color, las entradas de un i3 en entradas **y botones**
+(pulsación simple, doble, triple y larga, desde el contador de pulsaciones de
+cada lectura, o al instante por MQTT), un **Flood** en detector de fugas, un
+**Smoke** en detector de humo, un **Door/Window** en sensor de apertura con su
+iluminancia.
+
+**Los dispositivos a batería duermen** (H&T, Flood, Door/Window, Smoke, Button,
+H&T Plus/Gen3…): dormidos no responden, es su estado normal. La integración los
+mantiene por tanto **en local** mientras hayan informado en las últimas 26
+horas, nunca los pone en pausa y nunca dispara «Accesibilidad de un Shelly»
+mientras duermen. Sus valores llegan al despertar: configure **MQTT** en ellos
+para recibir cada informe en cuanto se envía; un dispositivo dormido casi nunca
+está despierto cuando llega una lectura.
 
 ### Persianas
 
@@ -411,6 +427,11 @@ Activó la autenticación en ese Shelly y la contraseña introducida en Gladys n
 coincide. En Gen2+ el usuario es **siempre** `admin`: solo cuenta la contraseña.
 Corríjala y guarde — la corrección se aplica de inmediato, sin reiniciar el
 contenedor.
+
+Si solo este dispositivo tiene otra contraseña, añádala en **Contraseñas por
+dispositivo** (`su-identificador-shelly=su-contraseña`) en lugar de cambiar la
+común. La pantalla Configuración nombra los dispositivos que rechazan su
+contraseña, y **Probar un dispositivo** indica qué contraseña probó.
 
 ### Un dispositivo pasa todo el tiempo por la nube (insignia naranja)
 

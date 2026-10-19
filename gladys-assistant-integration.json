@@ -103,10 +103,27 @@
         "es": "Contraseña de los dispositivos"
       },
       "description": {
-        "en": "Only if you enabled authentication on your Shelly devices. A single password is used for every device — set the same one on all of them, or leave this empty and disable authentication on your local network.",
-        "fr": "Uniquement si vous avez activé l'authentification sur vos Shelly. Un seul mot de passe est utilisé pour tous les appareils — définissez le même partout, ou laissez vide et désactivez l'authentification sur votre réseau local.",
-        "de": "Nur wenn du die Authentifizierung an deinen Shelly-Geräten aktiviert hast. Ein einziges Passwort gilt für alle Geräte — setze überall dasselbe, oder lass das Feld leer und deaktiviere die Authentifizierung in deinem lokalen Netzwerk.",
-        "es": "Solo si activó la autenticación en sus Shelly. Se usa una única contraseña para todos los dispositivos: ponga la misma en todos, o deje esto vacío y desactive la autenticación en su red local."
+        "en": "Only if you enabled authentication on your Shelly devices. Used for every device, except those listed in Per-device passwords below.",
+        "fr": "Uniquement si vous avez activé l'authentification sur vos Shelly. Utilisé pour tous les appareils, sauf ceux listés dans Mots de passe par appareil ci-dessous.",
+        "de": "Nur wenn du die Authentifizierung an deinen Shelly-Geräten aktiviert hast. Gilt für alle Geräte, außer denen unter Passwörter pro Gerät unten.",
+        "es": "Solo si activó la autenticación en sus Shelly. Se usa para todos los dispositivos, salvo los indicados en Contraseñas por dispositivo más abajo."
+      },
+      "required": false
+    },
+    {
+      "key": "device_passwords",
+      "type": "secret",
+      "label": {
+        "en": "Per-device passwords",
+        "fr": "Mots de passe par appareil",
+        "de": "Passwörter pro Gerät",
+        "es": "Contraseñas por dispositivo"
+      },
+      "description": {
+        "en": "Optional, for the devices whose password differs from the one above: device=password entries separated by semicolons. The device is its Shelly id, its MAC address or its IP address. Example: shellyplus1-a8032ab12345=first; 10.5.0.42=second",
+        "fr": "Optionnel, pour les appareils dont le mot de passe diffère de celui ci-dessus : des entrées appareil=motdepasse séparées par des points-virgules. L'appareil est son identifiant Shelly, son adresse MAC ou son adresse IP. Exemple : shellyplus1-a8032ab12345=premier; 10.5.0.42=second",
+        "de": "Optional, für Geräte mit einem anderen Passwort als oben: Einträge Gerät=Passwort, durch Semikolons getrennt. Das Gerät ist seine Shelly-ID, seine MAC-Adresse oder seine IP-Adresse. Beispiel: shellyplus1-a8032ab12345=erstes; 10.5.0.42=zweites",
+        "es": "Opcional, para los dispositivos cuya contraseña difiere de la de arriba: entradas dispositivo=contraseña separadas por punto y coma. El dispositivo es su identificador Shelly, su dirección MAC o su dirección IP. Ejemplo: shellyplus1-a8032ab12345=primera; 10.5.0.42=segunda"
       },
       "required": false
     },

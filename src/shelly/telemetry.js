@@ -43,11 +43,18 @@
 import { DEVICE_TRANSPORTS, logger } from '@gladysassistant/integration-sdk';
 
 import { mapWithConcurrency } from './async.js';
-import { DEVICE_TYPE, POLL_CONCURRENCY, STATE_KEEP_ALIVE_MS } from './constants.js';
+import {
+  DEVICE_TYPE,
+  POLL_CONCURRENCY,
+  SLEEPY_SILENCE_MS,
+  STATE_KEEP_ALIVE_MS,
+  TRANSPORT_MESSAGES,
+} from './constants.js';
 import { buildStates } from './deviceMapping.js';
-import { BUTTON_EVENT_VALUES, buildFeatureSpecs } from './features.js';
+import { BUTTON_EVENT_VALUES, buildFeatureSpecs, GEN1_INPUT_EVENTS } from './features.js';
 import { buildTargets, discoverDevices, publishDiscovered } from './discovery.js';
 import { createMqttHub } from './mqttHub.js';
+import { ShellyAuthError } from './rpc.js';
 import { hasVirtualComponents } from './virtualComponents.js';
 import { createWsHub } from './wsHub.js';
 
@@ -150,6 +157,9 @@ function chunk(items, size) {
  * @param {typeof fetch} [options.fetchImpl] fetch implementation (tests)
  * @param {() => number} [options.now] clock (tests)
  * @param {object} [options.WebSocketImpl] WebSocket implementation (tests)
+ * @param {object} [options.mqttImpl] mqtt implementation (tests)
+ * @param {(shellyIds: string[]) => void} [options.onAuthFailures] called when the
+ *   set of devices refusing the password changes
  * @returns {object} the telemetry engine
  */
 export function createTelemetry({
@@ -160,6 +170,7 @@ export function createTelemetry({
   now = Date.now,
   WebSocketImpl,
   mqttImpl,
+  onAuthFailures = () => {},
 }) {
   /** Last published value per feature external id, with its publication time. */
   const lastPublished = new Map();
@@ -198,6 +209,11 @@ export function createTelemetry({
   const transportOf = new Map();
   /** Recently handled events, to drop the copy a second channel delivers. */
   const recentEvents = new Map();
+  /** Devices whose last local read was refused for a wrong password (issue #9). */
+  const authFailures = new Set();
+  let lastAuthSignature = '';
+  /** Last Gen1 `event_cnt` per input, to turn a polled counter into presses. */
+  const gen1EventCounts = new Map();
 
   /**
    * Merge a (possibly partial) status into the snapshot of a device.
@@ -372,6 +388,34 @@ export function createTelemetry({
     Promise.resolve()
       .then(() => gladys.publishSceneEvent(key, data))
       .catch((err) => logger.debug(`Scene event ${key} not delivered: ${err.message}`));
+  }
+
+  /**
+   * Turn the press counter a polled Gen1 input carries (`event_cnt`, with the
+   * last `event`) into button events. Only an INCREASE is a press: the first
+   * reading after a start only records the counter. The `ts` is the counter
+   * itself, which is what the MQTT `input_event` topic carries too, so a
+   * press seen by both paths is handled once.
+   * @param {string} shellyId the Shelly device id
+   * @param {object} status a normalized status document
+   */
+  function detectGen1Events(shellyId, status) {
+    const events = [];
+    Object.entries(status || {}).forEach(([key, component]) => {
+      if (!key.startsWith('input:') || typeof component?.event_cnt !== 'number') {
+        return;
+      }
+      const countKey = `${shellyId}|${key}`;
+      const previous = gen1EventCounts.get(countKey);
+      gen1EventCounts.set(countKey, component.event_cnt);
+      const event = GEN1_INPUT_EVENTS[component.event];
+      if (previous !== undefined && component.event_cnt > previous && event) {
+        events.push({ component: key, event, ts: `gen1-${component.event_cnt}` });
+      }
+    });
+    if (events.length > 0) {
+      handleEvents(shellyId, events);
+    }
   }
 
   /**
@@ -679,9 +723,30 @@ export function createTelemetry({
       };
     }
 
+    // A sleepy device pushing over MQTT is served from its buffer: polling a
+    // device that is asleep would only time out.
+    if (target.sleepy && mqttHub.knows(target.shellyId)) {
+      const seenAt = lastSeenAt.get(target.shellyId);
+      if (seenAt && timestamp - seenAt < SLEEPY_SILENCE_MS) {
+        return {
+          target,
+          states: drainBuffer(target.shellyId),
+          transport: { external_id, transport: DEVICE_TRANSPORTS.LOCAL },
+        };
+      }
+    }
+
     try {
       const { status, transport, degraded, message } = await client.getStatus(target);
       lastPolledAt.set(target.shellyId, timestamp);
+      // Reached through the cloud after the device refused the password:
+      // still a password to fix.
+      if (degraded && message === TRANSPORT_MESSAGES.AUTH_FAILED) {
+        authFailures.add(target.shellyId);
+      } else {
+        authFailures.delete(target.shellyId);
+      }
+      detectGen1Events(target.shellyId, status);
       rememberStatus(target.shellyId, status);
       if (hasVirtualComponents(status) && typeof client.componentsFor === 'function') {
         // After a restart nothing has read the metadata yet. Values do not need
@@ -702,11 +767,38 @@ export function createTelemetry({
         },
       };
     } catch (err) {
-      logger.warn(`${target.shellyId} unreachable: ${err.message}`);
+      if (err instanceof ShellyAuthError) {
+        authFailures.add(target.shellyId);
+      }
+      // A device asleep answers nothing: that is its normal state, not an
+      // outage, as long as it reported recently (over MQTT, or when it was
+      // last awake). Its buffered values still go out.
+      const seenAt = lastSeenAt.get(target.shellyId);
+      if (target.sleepy && seenAt && timestamp - seenAt < SLEEPY_SILENCE_MS) {
+        logger.debug(`${target.shellyId} asleep (${err.message})`);
+        return {
+          target,
+          states: drainBuffer(target.shellyId),
+          transport: { external_id, transport: DEVICE_TRANSPORTS.LOCAL },
+        };
+      }
+      if (target.sleepy) {
+        logger.debug(`${target.shellyId} asleep, not heard from yet (${err.message})`);
+      } else {
+        logger.warn(`${target.shellyId} unreachable: ${err.message}`);
+      }
       return {
         target,
         states: [],
-        transport: { external_id, transport: DEVICE_TRANSPORTS.UNREACHABLE },
+        transport: {
+          external_id,
+          transport: DEVICE_TRANSPORTS.UNREACHABLE,
+          // A refused password is the one cause the user can fix right away:
+          // say it on the badge rather than a bare "unreachable".
+          ...(err instanceof ShellyAuthError
+            ? { degraded: true, message: TRANSPORT_MESSAGES.AUTH_FAILED }
+            : {}),
+        },
       };
     }
   }
@@ -793,6 +885,11 @@ export function createTelemetry({
 
     const published = await publishStates(states, timestamp);
     await publishTransports(usable.map((result) => result.transport));
+    const authSignature = [...authFailures].sort().join(',');
+    if (authSignature !== lastAuthSignature) {
+      lastAuthSignature = authSignature;
+      onAuthFailures([...authFailures]);
+    }
 
     logger.debug(
       `Refresh: ${reachable}/${targets.length} device(s) reachable ` +
@@ -955,6 +1052,8 @@ export function createTelemetry({
     describeDevice,
     describeBudget,
     handleEvents,
+    /** Shelly ids whose last local read was refused for a wrong password. */
+    authFailures: () => [...authFailures],
     // Exposed for the tests and the e2e wiring.
     wsHub,
     mqttHub,

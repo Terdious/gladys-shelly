@@ -61,12 +61,15 @@ direkt zu Schritt 3.
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Zusätzliche Geräteadressen** | Deine Shelly-Geräte werden nicht automatisch gefunden (anderes VLAN, mDNS am Gerät deaktiviert oder vom Router gefiltert). Gib die IPs durch Kommas getrennt ein. |
 | **Benutzername der Geräte**    | Lass `admin` stehen: Das ist der einzige Benutzername, den Gen2+-Geräte akzeptieren.                                                                              |
-| **Passwort der Geräte**        | Du hast die Authentifizierung an deinen Shelly-Geräten aktiviert. **Ein einziges Passwort** gilt für alle.                                                        |
+| **Passwort der Geräte**        | Du hast die Authentifizierung an deinen Shelly-Geräten aktiviert. Das gemeinsame Passwort deiner Geräte (die anderen ins nächste Feld).                           |
+| **Passwörter pro Gerät**       | Manche Geräte haben ein anderes Passwort: Einträge `Gerät=Passwort`, getrennt durch `;` (Shelly-ID, MAC- oder IP-Adresse).                                        |
 
-> ⚠️ Haben deine Shelly-Geräte **unterschiedliche** Passwörter, erreicht die
-> Integration nur die mit dem eingegebenen Passwort. Vereinheitliche das
-> Passwort, oder deaktiviere die Authentifizierung in deinem vertrauenswürdigen
-> lokalen Netzwerk.
+> 🔑 **Unterschiedliche Passwörter?** Behalte das häufigste unter **Passwort
+> der Geräte** und trage die anderen unter **Passwörter pro Gerät** ein, als
+> Einträge `Gerät=Passwort`, getrennt durch `;`: Das Gerät ist seine Shelly-ID
+> (`shellyplus1-a8032ab12345`), seine MAC-Adresse oder seine IP-Adresse. Ein
+> Gerät, das sein Passwort ablehnt, zeigt einen orangen Punkt auf seinem Badge,
+> und die Konfigurationsseite nennt es.
 
 ### Shelly Cloud (Ausweichlösung)
 
@@ -212,6 +215,8 @@ Vokabular spricht.
 | `pm1:N`                       | Leistung, Spannung, Strom und Energie eines eigenständigen Zählers (PM Mini)                                                                                                                                        |
 | `temperature:N`, `humidity:N` | Temperatur (°C), Luftfeuchtigkeit (%)                                                                                                                                                                               |
 | `devicepower:N`               | Batteriestand (%)                                                                                                                                                                                                   |
+| `flood:N`, `smoke:N`          | Wasserleck, Rauch (Gen1 Flood und Smoke, Gen2+-Entsprechungen)                                                                                                                                                      |
+| `contact:N`, `illuminance:N`  | Tür-/Fensteröffnung (geschlossen / offen) und Helligkeit (Lux) eines Gen1 Door/Window                                                                                                                               |
 | `number:N` / `boolean:N`      | Virtuelle Komponenten von „Powered by Shelly“-Geräten (LinkedGo ST1820…): Thermostat-Sollwert (steuerbar, auf Bereich und Schritt des Geräts begrenzt), Raumtemperatur (°C), Luftfeuchtigkeit (%), Ein/Aus-Optionen |
 
 Mit echten Daten geprüfte Hardware: **Shelly Pro 3EM**, **Shelly Pro 4PM**,
@@ -222,9 +227,18 @@ melde bitte, wie sie sich verhalten (siehe [Diagnose](#diagnose)).
 
 Bei **Gen1** gilt dasselbe Modell: Ein Shelly 2.5 im Rollladenmodus wird ein
 Rollladen, ein Dimmer, eine Bulb oder ein Duo ein Licht, ein RGBW2 im Farbmodus
-ein Farblicht, und die Eingänge eines i3 werden Eingänge. Gen1 hat keine aus
-einem Container erreichbaren Taster-Ereignisse (sie laufen über CoIoT-
-Multicast): Nur der Ein/Aus-Zustand der Eingänge wird gemeldet.
+ein Farblicht, die Eingänge eines i3 werden Eingänge **und Taster** (einfacher,
+doppelter, dreifacher und langer Druck, aus dem Druckzähler jeder Abfrage oder
+sofort über MQTT), ein **Flood** ein Wassermelder, ein **Smoke** ein
+Rauchmelder, ein **Door/Window** ein Öffnungssensor mit seiner Helligkeit.
+
+**Batteriegeräte schlafen** (H&T, Flood, Door/Window, Smoke, Button, Plus/Gen3
+H&T…): Schlafend antworten sie nicht, das ist ihr Normalzustand. Die Integration
+hält sie daher **lokal**, solange sie sich in den letzten 26 Stunden gemeldet
+haben, pausiert sie nie und löst während ihres Schlafs nie „Erreichbarkeit eines
+Shelly“ aus. Ihre Werte kommen beim Aufwachen: Richte **MQTT** auf ihnen ein, um
+jeden Bericht sofort zu erhalten; ein schlafendes Gerät ist bei einer Abfrage
+fast nie wach.
 
 ### Rollläden
 
@@ -409,6 +423,11 @@ Du hast an diesem Shelly die Authentifizierung aktiviert, und das in Gladys
 eingegebene Passwort stimmt nicht. Bei Gen2+ ist der Benutzername **immer**
 `admin`: Nur das Passwort zählt. Korrigiere es und speichere — die Korrektur
 wirkt sofort, ohne Neustart des Containers.
+
+Hat nur dieses Gerät ein anderes Passwort, trage es unter **Passwörter pro
+Gerät** ein (`seine-shelly-id=sein-passwort`), statt das gemeinsame zu ändern.
+Die Konfigurationsseite nennt die Geräte, die ihr Passwort ablehnen, und **Ein
+Gerät testen** sagt, welches Passwort versucht wurde.
 
 ### Ein Gerät weicht ständig auf die Cloud aus (oranges Badge)
 

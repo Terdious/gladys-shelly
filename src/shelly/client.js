@@ -20,7 +20,7 @@
 
 import { DEVICE_TRANSPORTS, logger } from '@gladysassistant/integration-sdk';
 
-import { isCloudConfigured } from '../config.js';
+import { credentialsFor, isCloudConfigured } from '../config.js';
 import { COMPONENTS_RETRY_MS, TRANSPORT_MESSAGES } from './constants.js';
 import {
   clearLocalCircuit,
@@ -80,7 +80,11 @@ export function createShellyClient({
    * @returns {object} the RPC client
    */
   function rpcFor(shellyId, host) {
-    const { deviceUsername, devicePassword } = getConfig();
+    // The device's own password when the configuration lists one (issue #9).
+    const { username: deviceUsername, password: devicePassword } = credentialsFor(getConfig(), {
+      shellyId,
+      host,
+    });
     const cached = rpcClients.get(shellyId);
     if (
       cached &&
@@ -129,7 +133,10 @@ export function createShellyClient({
    */
   async function localGetStatus(shellyId, host, gen) {
     if (gen === 1) {
-      const { deviceUsername, devicePassword } = getConfig();
+      const { username: deviceUsername, password: devicePassword } = credentialsFor(getConfig(), {
+        shellyId,
+        host,
+      });
       const raw = await getGen1Status({
         host,
         username: deviceUsername,
@@ -154,7 +161,10 @@ export function createShellyClient({
       if (!command.gen1) {
         throw new Error(`${shellyId}: ${command.rpc.method} has no Gen1 equivalent`);
       }
-      const { deviceUsername, devicePassword } = getConfig();
+      const { username: deviceUsername, password: devicePassword } = credentialsFor(getConfig(), {
+        shellyId,
+        host,
+      });
       return gen1Get({
         host,
         path: command.gen1,
@@ -177,9 +187,10 @@ export function createShellyClient({
    * @param {() => Promise<unknown>} run the call to perform
    * @param {object} [options] behaviour options
    * @param {boolean} [options.bypassCooldown] probe even while parked
+   * @param {boolean} [options.sleepy] a battery device: failing is it being asleep
    * @returns {Promise<{ok: boolean, result?: unknown, error?: Error}>} the outcome
    */
-  async function tryLocal(shellyId, host, run, { bypassCooldown = false } = {}) {
+  async function tryLocal(shellyId, host, run, { bypassCooldown = false, sleepy = false } = {}) {
     const timestamp = now();
     if (!bypassCooldown && isLocalInCooldown(circuit, shellyId, timestamp)) {
       // Skipping the call is the whole point: it is what saves the per-cycle
@@ -201,8 +212,8 @@ export function createShellyClient({
       if (tripped) {
         // Logged once, on the threshold crossing only — the point of the
         // breaker is to stop the every-cycle WARN as much as the every-cycle
-        // timeout.
-        logger.warn(
+        // timeout. A sleepy device failing is just asleep: debug only.
+        (sleepy ? logger.debug : logger.warn)(
           `${shellyId} failed ${LOCAL_FAILURE_THRESHOLD} local calls in a row ` +
             `(${error.message}) — pausing local probes for ${Math.round(cooldownMs / 60000)} min`,
         );
@@ -258,14 +269,16 @@ export function createShellyClient({
    * @param {string} [target.host] last known IP address or hostname
    * @returns {Promise<{status: object, transport: string, degraded?: boolean, message?: object}>} status and transport
    */
-  async function getStatus({ shellyId, host, gen = 2 }) {
+  async function getStatus({ shellyId, host, gen = 2, sleepy = false }) {
     const config = getConfig();
     const cloudUsable = isCloudConfigured(config);
     const localFirst = config.preferLocal && Boolean(host);
 
     let localError;
     if (localFirst) {
-      const attempt = await tryLocal(shellyId, host, () => localGetStatus(shellyId, host, gen));
+      const attempt = await tryLocal(shellyId, host, () => localGetStatus(shellyId, host, gen), {
+        sleepy,
+      });
       if (attempt.ok) {
         return {
           status: await completeStatus(shellyId, attempt.result, localCall(shellyId, host)),
@@ -321,7 +334,9 @@ export function createShellyClient({
 
     // Not preferring local but no cloud configured: local is all we have left.
     if (!localFirst && host) {
-      const attempt = await tryLocal(shellyId, host, () => localGetStatus(shellyId, host, gen));
+      const attempt = await tryLocal(shellyId, host, () => localGetStatus(shellyId, host, gen), {
+        sleepy,
+      });
       if (attempt.ok) {
         return {
           status: await completeStatus(shellyId, attempt.result, localCall(shellyId, host)),

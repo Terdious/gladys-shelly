@@ -29,7 +29,7 @@ import { createCloudClient, ShellyCloudAuthError } from './src/shelly/cloudClien
 import { createShellyClient } from './src/shelly/client.js';
 import { createTelemetry } from './src/shelly/telemetry.js';
 import { setDeviceValue } from './src/shelly/setValue.js';
-import { CONNECTION_MESSAGES } from './src/shelly/constants.js';
+import { CONNECTION_MESSAGES, withPasswordWarning } from './src/shelly/constants.js';
 import { createActions } from './src/actions.js';
 import { createSceneActions } from './src/scenes.js';
 import { createWidgets } from './src/widgets.js';
@@ -74,11 +74,38 @@ export function setupIntegration(gladys, { fetchImpl = fetch } = {}) {
     },
     fetchImpl,
   });
+  /** Last status reported for the channels, and the devices refusing the password. */
+  let channelStatus = { connected: true, message: undefined };
+  let refusedPassword = [];
+
+  /**
+   * Report the connection status: the state of the channels, completed with
+   * the devices that refuse the password (issue #9) — the one problem a user
+   * can fix from this very screen.
+   * @param {boolean} connected whether the channels work
+   * @param {object} [message] multi-language message of the channels
+   */
+  async function reportStatus(connected, message) {
+    channelStatus = { connected, message };
+    await reportConnectionStatus(
+      gladys,
+      connected,
+      withPasswordWarning(message, refusedPassword, gladys.devices),
+    );
+  }
+
   const telemetry = createTelemetry({
     gladys,
     client,
     getConfig: () => config,
     fetchImpl,
+    onAuthFailures: (shellyIds) => {
+      refusedPassword = shellyIds;
+      if (shellyIds.length > 0) {
+        logger.warn(`Device password refused by: ${shellyIds.join(', ')}`);
+      }
+      reportStatus(channelStatus.connected, channelStatus.message).catch(() => {});
+    },
   });
 
   /**
@@ -94,7 +121,7 @@ export function setupIntegration(gladys, { fetchImpl = fetch } = {}) {
     telemetry.start();
 
     if (!config.cloudEnabled) {
-      await reportConnectionStatus(gladys, true, CONNECTION_MESSAGES.LOCAL_ONLY);
+      await reportStatus(true, CONNECTION_MESSAGES.LOCAL_ONLY);
       return;
     }
 
@@ -102,24 +129,24 @@ export function setupIntegration(gladys, { fetchImpl = fetch } = {}) {
       // Enabling the toggle without the credentials is a half-finished setup:
       // local still works, so stay "connected" but say what is missing.
       logger.warn('Shelly Cloud enabled but the server or the authorization key is missing');
-      await reportConnectionStatus(gladys, true, CONNECTION_MESSAGES.CLOUD_INCOMPLETE);
+      await reportStatus(true, CONNECTION_MESSAGES.CLOUD_INCOMPLETE);
       return;
     }
 
     try {
       const deviceCount = await cloud.checkCredentials();
       logger.info(`Shelly Cloud reachable: ${deviceCount} device(s) visible on the account`);
-      await reportConnectionStatus(gladys, true, CONNECTION_MESSAGES.LOCAL_AND_CLOUD);
+      await reportStatus(true, CONNECTION_MESSAGES.LOCAL_AND_CLOUD);
     } catch (err) {
       if (err instanceof ShellyCloudAuthError) {
         logger.error(`Shelly Cloud rejected the authorization key: ${err.message}`);
-        await reportConnectionStatus(gladys, false, CONNECTION_MESSAGES.CLOUD_REJECTED);
+        await reportStatus(false, CONNECTION_MESSAGES.CLOUD_REJECTED);
         return;
       }
       // The cloud being down does not break a local install: keep going, the
       // per-device badges will show what is actually reachable.
       logger.warn(`Shelly Cloud unreachable (${err.message}) — local transport still active`);
-      await reportConnectionStatus(gladys, true, CONNECTION_MESSAGES.LOCAL_ONLY);
+      await reportStatus(true, CONNECTION_MESSAGES.LOCAL_ONLY);
     }
   }
 
@@ -128,7 +155,7 @@ export function setupIntegration(gladys, { fetchImpl = fetch } = {}) {
     logger.info('onScanRequest -> scanning the network for Shelly devices');
     const devices = await telemetry.syncDiscovery();
     if (devices.length === 0) {
-      await reportConnectionStatus(gladys, true, CONNECTION_MESSAGES.NO_DEVICE_YET);
+      await reportStatus(true, CONNECTION_MESSAGES.NO_DEVICE_YET);
     }
   });
 
@@ -156,7 +183,8 @@ export function setupIntegration(gladys, { fetchImpl = fetch } = {}) {
     // digest challenge and a stale password, so drop them.
     if (
       previous.deviceUsername !== config.deviceUsername ||
-      previous.devicePassword !== config.devicePassword
+      previous.devicePassword !== config.devicePassword ||
+      JSON.stringify(previous.devicePasswords) !== JSON.stringify(config.devicePasswords)
     ) {
       client.reset();
     }

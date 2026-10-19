@@ -33,6 +33,7 @@ import { logger } from '@gladysassistant/integration-sdk';
 import mqtt from 'mqtt';
 
 import { COMPONENT } from './constants.js';
+import { GEN1_INPUT_EVENTS } from './features.js';
 
 /** Our own `src`, and therefore the topic devices send their RPC replies to. */
 const RPC_SRC = 'gladys-shelly';
@@ -75,7 +76,7 @@ const GEN1_ROOT = 'shellies';
  *
  * @param {string} topic the MQTT topic
  * @param {string} payload the raw payload
- * @returns {{shellyId: string, status: object}|undefined} the fragment, or undefined
+ * @returns {{shellyId: string, status: object, events?: object[]}|undefined} the fragment, or undefined
  */
 export function parseGen1Topic(topic, payload) {
   const parts = topic.split('/');
@@ -148,8 +149,56 @@ export function parseGen1Topic(topic, payload) {
     return undefined;
   }
 
+  // shellies/<id>/input/<n> -> "0" | "1"
+  if (parts[2] === 'input' && parts.length === 4) {
+    const index = Number(parts[3]);
+    if (!Number.isInteger(index) || (payload !== '0' && payload !== '1')) {
+      return undefined;
+    }
+    return {
+      shellyId,
+      status: { [`${COMPONENT.INPUT}:${index}`]: { id: index, state: payload === '1' } },
+    };
+  }
+
+  // shellies/<id>/input_event/<n> -> {"event":"S","event_cnt":12}: a press.
+  if (parts[2] === 'input_event' && parts.length === 4) {
+    let frame;
+    try {
+      frame = JSON.parse(payload);
+    } catch {
+      return undefined;
+    }
+    const event = GEN1_INPUT_EVENTS[frame?.event];
+    if (!event || !Number.isInteger(Number(parts[3]))) {
+      return undefined;
+    }
+    return {
+      shellyId,
+      status: {},
+      // Same `ts` as the polled counter, so a press seen both ways counts once.
+      events: [
+        { component: `${COMPONENT.INPUT}:${parts[3]}`, event, ts: `gen1-${frame.event_cnt}` },
+      ],
+    };
+  }
+
   // shellies/<id>/sensor/<field> — battery-powered sensors.
   if (parts[2] === 'sensor' && parts.length === 4) {
+    // Door/Window and Flood / Smoke publish words, not numbers.
+    if (parts[3] === 'state' && (payload === 'open' || payload === 'close')) {
+      return {
+        shellyId,
+        status: { [`${COMPONENT.CONTACT}:0`]: { id: 0, open: payload === 'open' } },
+      };
+    }
+    if (
+      (parts[3] === 'flood' || parts[3] === 'smoke') &&
+      (payload === 'true' || payload === 'false')
+    ) {
+      const family = parts[3] === 'flood' ? COMPONENT.FLOOD : COMPONENT.SMOKE;
+      return { shellyId, status: { [`${family}:0`]: { id: 0, alarm: payload === 'true' } } };
+    }
     const value = number(payload);
     if (value === undefined) {
       return undefined;
@@ -159,6 +208,9 @@ export function parseGen1Topic(topic, payload) {
     }
     if (parts[3] === 'humidity') {
       return { shellyId, status: { [`${COMPONENT.HUMIDITY}:0`]: { id: 0, rh: value } } };
+    }
+    if (parts[3] === 'lux') {
+      return { shellyId, status: { [`${COMPONENT.ILLUMINANCE}:0`]: { id: 0, lux: value } } };
     }
     if (parts[3] === 'battery') {
       return {
@@ -249,7 +301,12 @@ export function createMqttHub({
       const fragment = parseGen1Topic(topic, payload);
       if (fragment) {
         remember(fragment.shellyId, `${GEN1_ROOT}/${fragment.shellyId}`);
-        onStatus(fragment.shellyId, fragment.status, { gen: 1 });
+        if (Object.keys(fragment.status).length > 0) {
+          onStatus(fragment.shellyId, fragment.status, { gen: 1 });
+        }
+        if (fragment.events) {
+          onEvent(fragment.shellyId, fragment.events);
+        }
       }
       return;
     }
