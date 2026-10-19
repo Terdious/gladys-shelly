@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-19
+
 ### Added
 
 - **RGBW white channel** (#4): an RGBW output (Plus RGBW PM, Gen1 RGBW2 in
@@ -151,7 +153,8 @@ the notes of the version's GitHub Release.
 - Per-device local circuit breaker, connection status on the Configuration
   screen, English and French documentation.
 
-[Unreleased]: https://github.com/Terdious/gladys-shelly/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Terdious/gladys-shelly/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Terdious/gladys-shelly/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Terdious/gladys-shelly/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Terdious/gladys-shelly/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Terdious/gladys-shelly/compare/v1.0.0...v1.1.0
