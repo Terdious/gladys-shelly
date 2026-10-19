@@ -112,12 +112,13 @@ Priority order.
 - **Bench validation** of #3 / #4 / #5 on real hardware (Plus 2PM in cover
   mode, Plus RGBW PM, Plus i4 / i4 Gen3, Gen1 2.5 roller, Dimmer 2).
 - [#6](https://github.com/Terdious/gladys-shelly/issues/6) **Validate the
-  Shelly Cloud fallback on a real account** — status, relay, and now the roller
-  and light control calls (`/device/relay/roller/control`,
+  Shelly Cloud fallback on a real account** — `all_status` batching, pacing and
+  Gen1 normalization are in; still to confirm on an account: status, relay,
+  and the roller and light control calls (`/device/relay/roller/control`,
   `/device/relay/roller/settings/topos`, `/device/light/control`).
 - **Bench validation** of the virtual components (#12, merged in 1.2.0) on the
   LinkedGo ST1820, and of #9 / #7 on real Gen1 sleepy devices.
-- RGBW white channel, analog inputs (no matching Gladys category yet), the
+- Analog inputs (no matching Gladys category yet), the
   `energy_meter` widget's daily energy (needs midnight snapshots in `/data`).
 
 ## external_id conventions (FROZEN)

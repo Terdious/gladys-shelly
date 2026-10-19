@@ -246,3 +246,23 @@ export function readSleepy(device) {
   const model = device?.params?.find((p) => p.name === 'SHELLY_MODEL')?.value;
   return SLEEPY_MODELS.has(String(model || '').toUpperCase());
 }
+
+/**
+ * Features a device created in Gladys still has but the device no longer
+ * reports: what is left behind when a Shelly changes profile (a Plus 2PM from
+ * relays to cover, a dimmer from light to switch) or loses a probe. Gladys
+ * keeps them, empty, until the user deletes them: naming them is the only way
+ * to tell a leftover from a broken feature.
+ *
+ * A button is never stale: it is fed by events, not by the status.
+ *
+ * @param {object} created the device as created in Gladys
+ * @param {object} fresh the device as just built from a full status
+ * @returns {string[]} the external ids of the stale features
+ */
+export function staleFeatures(created, fresh) {
+  const current = new Set((fresh?.features || []).map((feature) => feature.external_id));
+  return (created?.features || [])
+    .map((feature) => feature.external_id)
+    .filter((id) => id && !current.has(id) && !id.endsWith(':button'));
+}

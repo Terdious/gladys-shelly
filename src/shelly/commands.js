@@ -142,6 +142,18 @@ export function buildCommand({ family, index, suffix }, value) {
     };
   }
 
+  if (suffix === 'white' && family === COMPONENT.RGBW) {
+    const percent = clamp(value, 0, 100);
+    const white = Math.round(percent * 2.55);
+    return {
+      rpc: { method: 'RGBW.Set', params: { id, white } },
+      gen1: `${gen1Base}?white=${white}`,
+      cloud: cloudLight({ white: String(white) }),
+      state: percent,
+      label: `white ${percent} %`,
+    };
+  }
+
   if (suffix === 'temperature' && family === COMPONENT.CCT) {
     const ct = clamp(miredToKelvin(Number(value)), CCT_MIN_KELVIN, CCT_MAX_KELVIN);
     return {

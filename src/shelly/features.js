@@ -764,6 +764,25 @@ function lightSpecs(family, id) {
       read: (status) => rgbToInt(status.rgb),
     });
   }
+  if (family === COMPONENT.RGBW) {
+    // The separate white LEDs of an RGBW strip, 0-255 on the device, shown as
+    // a percentage like the brightness.
+    specs.push({
+      key: `${prefix}:white`,
+      nameKey: 'white',
+      category: DEVICE_FEATURE_CATEGORIES.LIGHT,
+      type: DEVICE_FEATURE_TYPES.LIGHT.BRIGHTNESS,
+      unit: DEVICE_FEATURE_UNITS.PERCENT,
+      min: 0,
+      max: 100,
+      read_only: false,
+      has_feedback: true,
+      required: 'white',
+      requiredNonNull: true,
+      read: (status) =>
+        typeof status.white === 'number' ? Math.round((status.white / 255) * 100) : undefined,
+    });
+  }
   if (family === COMPONENT.CCT) {
     specs.push({
       key: `${prefix}:temperature`,

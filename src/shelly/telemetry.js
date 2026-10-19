@@ -50,7 +50,7 @@ import {
   STATE_KEEP_ALIVE_MS,
   TRANSPORT_MESSAGES,
 } from './constants.js';
-import { buildStates } from './deviceMapping.js';
+import { buildStates, readShellyId, staleFeatures } from './deviceMapping.js';
 import { BUTTON_EVENT_VALUES, buildFeatureSpecs, GEN1_INPUT_EVENTS } from './features.js';
 import { buildTargets, discoverDevices, publishDiscovered } from './discovery.js';
 import { createMqttHub } from './mqttHub.js';
@@ -207,6 +207,8 @@ export function createTelemetry({
   const lastSeenAt = new Map();
   /** Last transport entry per device external id, for the diagnostic and widgets. */
   const transportOf = new Map();
+  /** Features a created device no longer reports, from the last scan. */
+  const staleByDevice = new Map();
   /** Recently handled events, to drop the copy a second channel delivers. */
   const recentEvents = new Map();
   /** Devices whose last local read was refused for a wrong password (issue #9). */
@@ -949,7 +951,36 @@ export function createTelemetry({
       onProgress: publish,
     });
     await publish(devices);
+    reportStaleFeatures(knownDevices, devices);
     return devices;
+  }
+
+  /**
+   * Name, once per scan, the features a created device no longer reports
+   * (profile changed, probe removed), and keep them for the diagnostic.
+   * @param {object[]} knownDevices the devices created in Gladys
+   * @param {object[]} devices the devices the scan just built
+   */
+  function reportStaleFeatures(knownDevices, devices) {
+    const fresh = new Map((devices || []).map((device) => [device.external_id, device]));
+    (knownDevices || []).forEach((created) => {
+      const found = fresh.get(created.external_id);
+      if (!found) {
+        return;
+      }
+      const stale = staleFeatures(created, found);
+      const shellyId = readShellyId(created);
+      if (stale.length === 0) {
+        staleByDevice.delete(shellyId);
+        return;
+      }
+      staleByDevice.set(shellyId, stale);
+      logger.warn(
+        `${created.name || shellyId}: ${stale.length} feature(s) no longer reported by the device ` +
+          `(profile changed?): ${stale.map((id) => id.split(':').slice(-3).join(':')).join(', ')}. ` +
+          'Click Update in the Discover tab for the new ones, and delete the old ones in Gladys.',
+      );
+    });
   }
 
   /** Run one cycle, swallowing its errors: the loop must survive a bad cycle. */
@@ -1020,6 +1051,7 @@ export function createTelemetry({
       webSocketLive: wsHub.isLive(shellyId),
       mqttSeeded: mqttSeeded.has(shellyId),
       mqttKnown: mqttHub.knows(shellyId),
+      staleFeatures: staleByDevice.get(shellyId) || [],
     };
   }
 

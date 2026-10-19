@@ -384,6 +384,12 @@ export function buildFleetDiagnostic(snapshot, { includeIdentifiers, now = Date.
       );
     }
     lines.push(`  Components: ${componentSummary(runtime.status)}`);
+    if (runtime.staleFeatures?.length > 0) {
+      lines.push(
+        `  Features no longer reported (profile changed? delete them in Gladys): ` +
+          runtime.staleFeatures.map((id) => id.split(':').slice(-3).join(':')).join(', '),
+      );
+    }
     statusHealthLines(runtime.status).forEach((line) => lines.push(`  ${line}`));
     controlLines(runtime.status).forEach((line) => lines.push(`  ${line}`));
   }

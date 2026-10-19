@@ -88,6 +88,10 @@ réseau, coupure Wi-Fi temporaire).
 > Shelly. Traitez-la comme un mot de passe. Elle est stockée chiffrée par Gladys
 > et n'est jamais affichée en clair.
 
+L'intégration lit tout le compte en **une seule requête par cycle de
+rafraîchissement** et espace ses appels d'une seconde, la limite de l'API Shelly
+Cloud : un parc entier sur le cloud ne la dépasse jamais.
+
 Quand plusieurs canaux sont configurés, Gladys affiche un interrupteur standard
 **« Préférer la connexion locale »** (activé par défaut). C'est une préférence :
 l'intégration l'applique quand elle le peut, et affiche la réalité appareil par
@@ -274,8 +278,8 @@ arrêté, l'état indique « stop » et la position est la vraie.
 Les variateurs et sorties couleur deviennent des **lumières** Gladys :
 marche/arrêt, luminosité (0 à 100 %), couleur pour `rgb` / `rgbw`, température
 de couleur pour `cct` (2700 K chaud à 6500 K froid). Changer la luminosité
-n'allume ni n'éteint la lumière. Le canal blanc d'une sortie RGBW et les entrées
-analogiques ne sont pas encore exposés.
+n'allume ni n'éteint la lumière. Une sortie RGBW expose aussi ses LED **blanches** (0 à 100 %). Les entrées
+analogiques ne sont pas encore exposées.
 
 ### Entrées et boutons
 
@@ -410,6 +414,12 @@ Gladys signale les mises à jour disponibles dans **Intégrations**. Cliquez sur
 **Mettre à jour** : le conteneur est recréé avec la nouvelle image, votre
 configuration et vos appareils sont conservés. Les notes de chaque version sont
 sur la [page des releases GitHub](https://github.com/Terdious/gladys-shelly/releases).
+
+Un Shelly qui change de **profil** (un Plus 2PM qui passe de relais à volet, un
+variateur de lumière à interrupteur) garde ses anciennes fonctionnalités dans
+Gladys, vides. Le scan les nomme dans les journaux et le **Diagnostic des
+appareils** les liste : cliquez sur **Mettre à jour** pour les nouvelles, puis
+supprimez les anciennes dans Gladys.
 
 Les nouvelles fonctionnalités d'un appareil existant (un volet calibré depuis,
 un composant nouvellement supporté) apparaissent après une **découverte** :

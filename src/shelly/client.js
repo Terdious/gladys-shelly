@@ -310,7 +310,8 @@ export function createShellyClient({
 
     if (cloudUsable) {
       try {
-        const status = await cloud.getStatus(shellyId);
+        // One `all_status` per cycle for the whole account (issue #6).
+        const status = await (cloud.getStatusBatched || cloud.getStatus)(shellyId);
         if (status) {
           // Reaching the cloud after a local failure works, but it is not the
           // nominal path: say so, with the reason the user can act on.
