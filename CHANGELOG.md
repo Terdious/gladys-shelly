@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-19
+
 ### Added
 
 - **Per-device passwords** (#9): a new optional secret field lists the devices
@@ -127,7 +129,8 @@ the notes of the version's GitHub Release.
 - Per-device local circuit breaker, connection status on the Configuration
   screen, English and French documentation.
 
-[Unreleased]: https://github.com/Terdious/gladys-shelly/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Terdious/gladys-shelly/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Terdious/gladys-shelly/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Terdious/gladys-shelly/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Terdious/gladys-shelly/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Terdious/gladys-shelly/releases/tag/v1.0.0
