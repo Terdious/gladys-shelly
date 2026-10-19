@@ -1,7 +1,8 @@
 # Intégration Shelly pour Gladys Assistant
 
 Cette intégration connecte vos appareils **Shelly** à Gladys Assistant : relais,
-prises connectées et compteurs d'énergie.
+prises connectées, compteurs d'énergie, volets roulants, variateurs et lumières
+couleur, entrées et boutons.
 
 Elle parle **directement à vos appareils sur votre réseau local** (protocole RPC
 Gen2+) et les laisse **pousser leurs changements en temps réel** : un relais
@@ -29,7 +30,8 @@ avec un formulaire **entièrement vide**.
 
 ## Prérequis
 
-- Gladys Assistant **4.83.0** ou plus récent.
+- Gladys Assistant **5.1.0** ou plus récent (widgets de tableau de bord,
+  déclencheurs et actions de scène).
 - Vos Shelly sont alimentés et connectés à votre Wi-Fi (configuration faite
   depuis l'application Shelly ou l'interface web de l'appareil).
 - Gladys et vos Shelly sont sur **le même réseau local** — ou vous connaissez
@@ -117,6 +119,12 @@ l'identifiant matériel — renommer un préfixe ne casse donc rien.
 
 ### Avancé
 
+**Noms des fonctionnalités** : la langue des noms de fonctionnalités donnés aux
+appareils que vous créez à partir de maintenant (anglais, français, allemand ou
+espagnol). Un appareil déjà créé garde ses noms — renommez ses fonctionnalités
+dans Gladys si vous le souhaitez ; leurs identifiants, leur historique et vos
+scènes ne dépendent jamais du nom.
+
 **Intervalle de rafraîchissement** : à quelle fréquence Gladys lit l'état de
 chaque appareil. 30 secondes par défaut.
 
@@ -197,23 +205,67 @@ n'expose qu'un On/Off, un Pro 1PM expose aussi puissance, tension, courant et
 énergie — et un Shelly sorti après cette version fonctionne s'il parle le même
 vocabulaire.
 
-| Composant Shelly      | Ce que vous obtenez dans Gladys                                                                                                         |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `switch:N`            | On/Off (pilotable), puissance (W), tension (V), courant (A), énergie totale (kWh), température interne (°C)                             |
-| `em:N` (triphasé)     | Par phase L1/L2/L3 : puissance active (W), puissance apparente (VA), tension (V), courant (A) — plus les totaux et le courant de neutre |
-| `emdata:N`            | Énergie totale et énergie réinjectée, par phase et au total (kWh)                                                                       |
-| `em1:N` / `em1data:N` | Équivalents monophasés (Shelly Pro EM, 1PM Mini Gen3)                                                                                   |
-| `pm1:N`               | Puissance, tension, courant, énergie d'un compteur seul (PM Mini)                                                                       |
-| `temperature:N`       | Température (°C)                                                                                                                        |
-| `humidity:N`          | Humidité (%)                                                                                                                            |
-| `devicepower:N`       | Niveau de batterie (%)                                                                                                                  |
+| Composant Shelly              | Ce que vous obtenez dans Gladys                                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `switch:N`                    | On/Off (pilotable), puissance (W), tension (V), courant (A), énergie totale (kWh), température interne (°C)                                      |
+| `cover:N`                     | Volet ouvrir / stop / fermer (pilotable), position (%) une fois calibré, puissance, tension, courant, énergie, température                       |
+| `light:N`                     | Lumière marche/arrêt et luminosité (pilotables), puissance et énergie                                                                            |
+| `rgb:N` / `rgbw:N`            | Comme `light:N`, plus la couleur (pilotable)                                                                                                     |
+| `cct:N`                       | Comme `light:N`, plus la température de couleur (pilotable)                                                                                      |
+| `input:N`                     | Mode interrupteur : une entrée (marche/arrêt). Mode bouton : un bouton et le déclencheur de scène « Bouton appuyé ». Mode comptage : un compteur |
+| `em:N` (triphasé)             | Par phase L1/L2/L3 : puissance active (W), puissance apparente (VA), tension (V), courant (A) — plus les totaux et le courant de neutre          |
+| `emdata:N`                    | Énergie totale et énergie réinjectée, par phase et au total (kWh)                                                                                |
+| `em1:N` / `em1data:N`         | Équivalents monophasés (Shelly Pro EM, 1PM Mini Gen3)                                                                                            |
+| `pm1:N`                       | Puissance, tension, courant, énergie d'un compteur seul (PM Mini)                                                                                |
+| `temperature:N`, `humidity:N` | Température (°C), humidité (%)                                                                                                                   |
+| `devicepower:N`               | Niveau de batterie (%)                                                                                                                           |
 
-Matériel validé par conception sur les payloads réels : **Shelly Pro 3EM**,
-**Shelly Pro 4PM**, **Shelly Plus Plug S**.
+Matériel validé sur des payloads réels : **Shelly Pro 3EM**, **Shelly Pro
+4PM**, **Shelly Pro 3**, **Shelly Plus 2PM**, **Shelly Plus Plug S** et le
+**3EM Gen1**. Les volets, lumières et entrées suivent l'API Shelly documentée
+et attendent vos retours sur du vrai matériel : si vous en avez, dites-moi
+comment ils se comportent (voir [Diagnostic](#diagnostic)).
 
-> **Pas encore supportés :** volets roulants (`cover`), éclairages variables
-> (`light`), entrées (`input`). Voir la
-> [roadmap](./ROADMAP.md).
+En **Gen1**, le même modèle s'applique : un Shelly 2.5 en mode volet devient un
+volet, un Dimmer, une Bulb ou un Duo une lumière, un RGBW2 en mode couleur une
+lumière couleur, et les entrées d'un i3 des entrées. Les Gen1 n'ont pas
+d'événements de bouton joignables depuis un conteneur (ils passent par du
+multicast CoIoT) : seul l'état marche/arrêt de leurs entrées remonte.
+
+### Volets roulants
+
+Un volet expose la commande **volet** standard de Gladys : **Ouvrir**, **Stop**,
+**Fermer**, et un curseur de **position**. La position (100 % = complètement
+ouvert, la même convention chez Shelly et dans Gladys) n'existe qu'une fois le
+volet **calibré** dans l'application Shelly : un volet non calibré n'a pas de
+fonctionnalité position plutôt qu'une position qui ne bouge jamais. Calibrez-le,
+relancez une découverte et cliquez sur **Mettre à jour** sur l'appareil.
+
+Pendant le mouvement, Gladys affiche le sens (ouverture / fermeture) ; une fois
+arrêté, l'état indique « stop » et la position est la vraie.
+
+### Lumières
+
+Les variateurs et sorties couleur deviennent des **lumières** Gladys :
+marche/arrêt, luminosité (0 à 100 %), couleur pour `rgb` / `rgbw`, température
+de couleur pour `cct` (2700 K chaud à 6500 K froid). Changer la luminosité
+n'allume ni n'éteint la lumière. Le canal blanc d'une sortie RGBW et les entrées
+analogiques ne sont pas encore exposés.
+
+### Entrées et boutons
+
+Ce que devient une entrée dépend de son **mode** dans l'application Shelly :
+
+- **Interrupteur** (interrupteur mural, contact sec) : une fonctionnalité
+  **entrée**, marche ou arrêt, publiée en temps réel ;
+- **Bouton** (bouton poussoir) : une fonctionnalité **bouton**, plus le
+  déclencheur de scène **Bouton appuyé sur un Shelly**, déclenché à chaque appui
+  simple, double, triple ou long — en temps réel, par la WebSocket ou MQTT. Un
+  Shelly i4 donne ainsi quatre boutons prêts pour vos scènes ;
+- **Comptage** : un **compteur**.
+
+Vous avez changé le mode d'une entrée dans l'application Shelly ? Relancez une
+découverte et cliquez sur **Mettre à jour** sur l'appareil.
 
 ### Le courant de neutre
 
@@ -243,11 +295,102 @@ la cause — appareil éteint, IP changée, ou mot de passe refusé.
 
 ---
 
+## Scènes
+
+Dans l'éditeur de scènes, catégorie **Intégrations** :
+
+**Déclencheurs**
+
+- **Bouton appuyé sur un Shelly** — choisissez l'appareil, éventuellement
+  l'entrée (0 à 3) et les appuis (simple, double, triple, long). Les variables
+  `device_name`, `input` et `event` sont disponibles pour les actions suivantes.
+- **Joignabilité d'un Shelly** — un appareil est devenu injoignable sur tous les
+  transports (local, MQTT et cloud), ou répond à nouveau. Pratique pour être
+  prévenu quand le compteur du tableau principal ne remonte plus.
+
+**Actions**
+
+- **Allumer pendant une durée** — allume un relais ou une lumière, et c'est **le
+  Shelly lui-même** qui l'éteint après la durée (1 seconde à 1 jour). La
+  minuterie vit dans l'appareil : un redémarrage de Gladys entre-temps ne laisse
+  jamais tourner la pompe, le chauffage ou l'arrosage. La sortie 0 est le
+  premier relais ou la première lumière de l'appareil, 1 le deuxième, etc.
+- **Redémarrer un Shelly** — le remède habituel à un appareil qui ne remonte
+  plus rien après un changement de Wi-Fi.
+
+Les actions habituelles (allumer, éteindre, régler une position, une
+luminosité…) restent les actions d'appareil standard de Gladys.
+
+---
+
+## Widgets de tableau de bord
+
+Ajoutez-les depuis l'édition du tableau de bord, colonne **Intégrations** :
+
+- **Compteur d'énergie Shelly** — pour un Shelly avec mesure (Pro 3EM, Pro EM,
+  PM Mini, une prise ou un relais avec mesure) : une jauge de puissance en
+  direct (sous zéro quand vous réinjectez), une tuile par phase ou par voie,
+  l'énergie totale, la courbe de puissance sur la période de votre choix, puis
+  les tensions, intensités, puissance apparente, facteur de puissance et
+  fréquence de la dernière lecture, et la source. Réglez le maximum de la jauge
+  sur votre puissance souscrite.
+- **Interrupteurs Shelly** — les relais et lumières d'une pièce ou de toute la
+  maison (laissez la sélection vide pour tout) : état et puissance de chaque
+  sortie, le nombre allumé, la puissance totale, et des boutons **Tout
+  allumer** / **Tout éteindre** (avec confirmation).
+- **Volets Shelly** — un groupe de volets : état et position de chacun, la
+  position moyenne, et des boutons **Ouvrir**, **Stop**, **Fermer** et
+  **Position** pour tout le groupe (le formulaire de position est pré-rempli
+  avec la moyenne actuelle).
+- **Santé du réseau Shelly** — combien d'appareils remontent en temps réel,
+  passent par le secours ou sont injoignables, puis la liste de ce qui mérite
+  votre attention (injoignable, dégradé, signal Wi-Fi faible, mise à jour
+  firmware disponible), et la part utilisée du budget Gladys de 300 états par
+  minute.
+
+---
+
+## Diagnostic
+
+L'écran **Configuration** de l'intégration propose deux boutons en lecture
+seule, faits pour une issue GitHub ou un message sur le forum :
+
+- **Diagnostic des appareils** — un rapport texte de toute l'installation :
+  configuration (jamais de mot de passe ni la clé cloud), canaux WebSocket et
+  MQTT, états publiés dans la dernière minute et cadence de la voie temps réel,
+  puis pour chaque appareil son transport et s'il est dégradé, l'âge de sa
+  dernière donnée, le disjoncteur local, ses composants, le signal Wi-Fi, la
+  durée de fonctionnement, la mise à jour firmware disponible et l'état de ses
+  sorties. Choisissez un appareil pour le diagnostiquer seul.
+- **Tester un appareil** — lit un appareil **tout de suite**, à l'adresse
+  utilisée par l'intégration : identité `/shelly` et temps de réponse, puis la
+  lecture complète de l'état (avec le mot de passe), les composants et les
+  fonctionnalités que l'intégration en tire, le signal Wi-Fi, et s'il remonte
+  en temps réel. En cas d'échec, l'erreur exacte et quoi essayer. Fonctionne
+  aussi pour un appareil **non créé dans Gladys** : saisissez son adresse IP —
+  le moyen le plus rapide de comprendre pourquoi un scan ne le trouve pas.
+  N'écrit jamais rien dans l'appareil.
+
+Par défaut, la partie MAC des identifiants est raccourcie et les adresses
+locales masquées : le rapport peut être collé tel quel publiquement. Cochez
+**Afficher les identifiants et adresses locales** pour un échange privé. Les
+rapports sont aussi écrits dans les journaux de l'intégration, toujours en
+version masquée.
+
+---
+
 ## Mettre à jour l'intégration
 
 Gladys signale les mises à jour disponibles dans **Intégrations**. Cliquez sur
 **Mettre à jour** : le conteneur est recréé avec la nouvelle image, votre
-configuration et vos appareils sont conservés.
+configuration et vos appareils sont conservés. Les notes de chaque version sont
+sur la [page des releases GitHub](https://github.com/Terdious/gladys-shelly/releases).
+
+Les nouvelles fonctionnalités d'un appareil existant (un volet calibré depuis,
+un composant nouvellement supporté) apparaissent après une **découverte** :
+cliquez sur **Mettre à jour** sur l'appareil marqué « Déjà ajouté ». Ses
+fonctionnalités existantes, son historique, vos scènes et tableaux de bord sont
+conservés.
 
 ---
 
@@ -263,7 +406,10 @@ configuration et vos appareils sont conservés.
    Saisissez les adresses IP à la main dans **Adresses d'appareils
    supplémentaires**, puis sauvegardez : la découverte se relance
    automatiquement.
-3. **Regardez les logs du conteneur** (`docker logs <conteneur>`). L'intégration
+3. **Utilisez « Tester un appareil »** dans l'écran Configuration avec l'IP de
+   l'appareil : il dit si l'appareil répond, refuse le mot de passe, ou n'est
+   pas un Shelly.
+4. **Regardez les logs du conteneur** (`docker logs <conteneur>`). L'intégration
    journalise le nombre d'adresses candidates, leur origine, et la raison
    exacte pour laquelle une adresse a été écartée.
 
@@ -375,4 +521,7 @@ supprimez les anciens.
 - [README du projet](../README.md) — architecture et développement
 - [Roadmap](./ROADMAP.md) — ce qui est fait, ce qui arrive
 - [Documentation de l'API Shelly Gen2+](https://shelly-api-docs.shelly.cloud/gen2/)
-- [Signaler un problème](https://github.com/Terdious/gladys-shelly/issues)
+- [Notes de version](https://github.com/Terdious/gladys-shelly/releases) et le
+  [changelog](../CHANGELOG.md)
+- [Signaler un problème](https://github.com/Terdious/gladys-shelly/issues) —
+  joignez le rapport du **Diagnostic des appareils**

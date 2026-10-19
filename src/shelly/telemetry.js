@@ -45,7 +45,7 @@ import { DEVICE_TRANSPORTS, logger } from '@gladysassistant/integration-sdk';
 import { mapWithConcurrency } from './async.js';
 import { DEVICE_TYPE, POLL_CONCURRENCY, STATE_KEEP_ALIVE_MS } from './constants.js';
 import { buildStates } from './deviceMapping.js';
-import { buildFeatureSpecs } from './features.js';
+import { BUTTON_EVENT_VALUES, buildFeatureSpecs } from './features.js';
 import { buildTargets, discoverDevices, publishDiscovered } from './discovery.js';
 import { createMqttHub } from './mqttHub.js';
 import { createWsHub } from './wsHub.js';
@@ -108,6 +108,19 @@ const REALTIME_ADJUST_DWELL_MS = 60000;
 
 /** Longest the lane will stretch itself to, in seconds, however big the fleet. */
 const MAX_REALTIME_SECONDS = 60;
+
+/** Scene trigger fired on a button press of an `input:N` in button mode. */
+export const INPUT_EVENT_TRIGGER = 'input_event';
+
+/** Scene trigger fired when a device becomes unreachable, or reachable again. */
+export const REACHABILITY_TRIGGER = 'device_reachability_changed';
+
+/**
+ * How long a pushed event is remembered to drop its duplicate, in ms. A device
+ * connected over the WebSocket AND publishing to MQTT reports the same press
+ * twice; one press must run a scene once.
+ */
+const EVENT_DEDUP_MS = 10000;
 
 /** How often a live (pushing) device is still polled, as a safety net, in ms. */
 const LIVE_SAFETY_NET_MS = 5 * 60 * 1000;
@@ -173,9 +186,42 @@ export function createTelemetry({
   /** The discovery currently in flight, so two callers share one scan. */
   let discoveryInFlight = null;
 
+  /**
+   * Latest known status per device, merged from every poll and push, plus when
+   * it was last refreshed. Read-only snapshot for the diagnostic and widgets:
+   * nothing in the publish path depends on it.
+   */
+  const lastStatus = new Map();
+  const lastSeenAt = new Map();
+  /** Last transport entry per device external id, for the diagnostic and widgets. */
+  const transportOf = new Map();
+  /** Recently handled events, to drop the copy a second channel delivers. */
+  const recentEvents = new Map();
+
+  /**
+   * Merge a (possibly partial) status into the snapshot of a device.
+   * @param {string} shellyId the Shelly device id
+   * @param {object} status the status document
+   */
+  function rememberStatus(shellyId, status) {
+    if (!status || typeof status !== 'object') {
+      return;
+    }
+    const known = lastStatus.get(shellyId) || {};
+    Object.entries(status).forEach(([key, value]) => {
+      known[key] =
+        value && typeof value === 'object' && !Array.isArray(value)
+          ? { ...(known[key] || {}), ...value }
+          : value;
+    });
+    lastStatus.set(shellyId, known);
+    lastSeenAt.set(shellyId, now());
+  }
+
   const wsHub = createWsHub({
     getConfig,
     onStatus: (shellyId, status) => bufferPushedStatus(shellyId, status),
+    onEvent: (shellyId, events) => handleEvents(shellyId, events),
     onConnectionChange: (shellyId, connected) => {
       if (!connected) {
         // Values buffered behind a socket that just died are stale by
@@ -210,6 +256,7 @@ export function createTelemetry({
   const mqttHub = createMqttHub({
     getConfig,
     onStatus: (shellyId, status) => bufferPushedStatus(shellyId, status),
+    onEvent: (shellyId, events) => handleEvents(shellyId, events),
     onDeviceSeen: (shellyId) => {
       // The MQTT equivalent of the WebSocket handshake: one full snapshot, so
       // every feature has a value before we rely on partial frames.
@@ -269,6 +316,7 @@ export function createTelemetry({
    * @param {object} status the pushed status document
    */
   function bufferPushedStatus(shellyId, status) {
+    rememberStatus(shellyId, status);
     const externalIds = gladys.externalIds(DEVICE_TYPE, shellyId);
     const buffered = pushBuffer.get(shellyId) || new Map();
 
@@ -292,6 +340,76 @@ export function createTelemetry({
       pushBuffer.set(shellyId, buffered);
       scheduleFastFlush();
     }
+  }
+
+  /**
+   * Name of a device created in Gladys, for the scene variables.
+   * @param {string} deviceExternalId the device external id
+   * @returns {string|null} the device name, or null when unknown
+   */
+  function deviceNameOf(deviceExternalId) {
+    const device = (gladys.devices || []).find((d) => d.external_id === deviceExternalId);
+    return device?.name ?? null;
+  }
+
+  /**
+   * Fire a scene trigger, never failing the caller: an older core without
+   * scene declarations, or the event budget being spent, only costs the event.
+   * @param {string} key trigger key
+   * @param {object} data flat event data
+   */
+  function fireSceneEvent(key, data) {
+    if (typeof gladys.publishSceneEvent !== 'function') {
+      return;
+    }
+    Promise.resolve()
+      .then(() => gladys.publishSceneEvent(key, data))
+      .catch((err) => logger.debug(`Scene event ${key} not delivered: ${err.message}`));
+  }
+
+  /**
+   * Handle the events a device pushed (`NotifyEvent`).
+   *
+   * A button press is an event, not a state: it publishes the button feature
+   * (Gladys BUTTON_STATUS value, for the device's own history and the
+   * classic "button" scene trigger) and fires the `input_event` trigger with
+   * the press details. The same press arriving over the WebSocket and MQTT is
+   * handled once.
+   *
+   * @param {string} shellyId the Shelly device id
+   * @param {object[]} events the `params.events` of the frame
+   */
+  function handleEvents(shellyId, events) {
+    const timestamp = now();
+    recentEvents.forEach((at, key) => {
+      if (timestamp - at > EVENT_DEDUP_MS) {
+        recentEvents.delete(key);
+      }
+    });
+    const externalIds = gladys.externalIds(DEVICE_TYPE, shellyId);
+    (events || []).forEach((event) => {
+      const value = BUTTON_EVENT_VALUES[event?.event];
+      const match = /^input:(\d+)$/.exec(String(event?.component || ''));
+      if (value === undefined || !match) {
+        return;
+      }
+      const dedupKey = `${shellyId}|${event.component}|${event.event}|${event.ts ?? ''}`;
+      if (recentEvents.has(dedupKey)) {
+        return;
+      }
+      recentEvents.set(dedupKey, timestamp);
+      const featureExternalId = externalIds.feature(`input:${match[1]}:button`);
+      logger.info(`${shellyId} ${event.component}: ${event.event}`);
+      Promise.resolve()
+        .then(() => gladys.publishState(featureExternalId, value))
+        .catch((err) => logger.debug(`Button state not published: ${err.message}`));
+      fireSceneEvent(INPUT_EVENT_TRIGGER, {
+        device: externalIds.device,
+        input: match[1],
+        event: event.event,
+        device_name: deviceNameOf(externalIds.device),
+      });
+    });
   }
 
   /**
@@ -557,6 +675,7 @@ export function createTelemetry({
     try {
       const { status, transport, degraded, message } = await client.getStatus(target);
       lastPolledAt.set(target.shellyId, timestamp);
+      rememberStatus(target.shellyId, status);
       return {
         target,
         states: buildStates({
@@ -585,6 +704,25 @@ export function createTelemetry({
    * @param {Array<object>} entries transport entries
    */
   async function publishTransports(entries) {
+    entries.forEach((entry) => {
+      const previous = transportOf.get(entry.external_id);
+      transportOf.set(entry.external_id, entry);
+      // Only a TRANSITION is an event, and the first reading after a start is
+      // not one: a device that was unreachable before the restart is no news.
+      if (!previous) {
+        return;
+      }
+      const wasUnreachable = previous.transport === DEVICE_TRANSPORTS.UNREACHABLE;
+      const isUnreachable = entry.transport === DEVICE_TRANSPORTS.UNREACHABLE;
+      if (wasUnreachable !== isUnreachable) {
+        fireSceneEvent(REACHABILITY_TRIGGER, {
+          device: entry.external_id,
+          state: isUnreachable ? 'unreachable' : 'reachable',
+          transport: entry.transport,
+          device_name: deviceNameOf(entry.external_id),
+        });
+      }
+    });
     const changed = entries.filter((entry) => {
       const signature = `${entry.transport}|${entry.degraded ? 1 : 0}`;
       if (lastTransports.get(entry.external_id) === signature) {
@@ -757,12 +895,53 @@ export function createTelemetry({
     pushBuffer.clear();
   }
 
+  /**
+   * Read-only snapshot of one device, for the diagnostic and the widgets.
+   * @param {string} shellyId the Shelly device id
+   * @returns {object} what telemetry knows about the device
+   */
+  function describeDevice(shellyId) {
+    const externalId = gladys.externalIds(DEVICE_TYPE, shellyId).device;
+    return {
+      status: lastStatus.get(shellyId),
+      lastSeenAt: lastSeenAt.get(shellyId),
+      lastPolledAt: lastPolledAt.get(shellyId),
+      transport: transportOf.get(externalId),
+      webSocketLive: wsHub.isLive(shellyId),
+      mqttSeeded: mqttSeeded.has(shellyId),
+      mqttKnown: mqttHub.knows(shellyId),
+    };
+  }
+
+  /**
+   * Read-only snapshot of the publishing budget, for the diagnostic.
+   * @returns {object} lane cadence and budget use
+   */
+  function describeBudget() {
+    const { realtimeSeconds } = getConfig();
+    return {
+      configuredRealtimeSeconds: realtimeSeconds,
+      effectiveRealtimeSeconds: currentRealtimeSeconds ?? realtimeSeconds,
+      statesLastMinute: currentPublishRate(now()),
+      limitPerMinute: STATE_RATE_LIMIT_PER_MINUTE,
+      lastRateLimitedAt: rateLimitedAt || undefined,
+      webSocketConnections: wsHub.size(),
+      webSocketLive: wsHub.liveCount(),
+      mqttConnected: mqttHub.isConnected(),
+      mqttDevices: mqttHub.devices().length,
+      mqttSeeded: mqttSeeded.size,
+    };
+  }
+
   return {
     start,
     stop,
     refreshValues,
     syncDiscovery,
     resetDedup,
+    describeDevice,
+    describeBudget,
+    handleEvents,
     // Exposed for the tests and the e2e wiring.
     wsHub,
     mqttHub,

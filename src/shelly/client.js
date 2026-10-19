@@ -30,7 +30,8 @@ import {
   recordLocalSuccess,
 } from './localCircuit.js';
 import { normalizeGen1Status } from './gen1/normalize.js';
-import { getGen1Status, setGen1Relay } from './gen1/rest.js';
+import { gen1Get, getGen1Status } from './gen1/rest.js';
+import { buildCommand } from './commands.js';
 import { createRpcClient, ShellyAuthError, ShellyConnectionError } from './rpc.js';
 
 /**
@@ -127,24 +128,28 @@ export function createShellyClient({
   }
 
   /**
-   * Flip a relay over the LOCAL transport of its generation.
+   * Send a command over the LOCAL transport of its generation.
    * @param {string} shellyId the Shelly device id
    * @param {string} host IP address or hostname
    * @param {number} gen hardware generation
-   * @param {number} channel relay channel index
-   * @param {boolean} on desired state
+   * @param {object} command a command from commands.js
    * @returns {Promise<unknown>} the device answer
    */
-  async function localSetSwitch(shellyId, host, gen, channel, on) {
+  async function localCommand(shellyId, host, gen, command) {
     if (gen === 1) {
+      if (!command.gen1) {
+        throw new Error(`${shellyId}: ${command.rpc.method} has no Gen1 equivalent`);
+      }
       const { deviceUsername, devicePassword } = getConfig();
-      return setGen1Relay(
-        { host, username: deviceUsername, password: devicePassword, fetchImpl },
-        channel,
-        on,
-      );
+      return gen1Get({
+        host,
+        path: command.gen1,
+        username: deviceUsername,
+        password: devicePassword,
+        fetchImpl,
+      });
     }
-    return rpcFor(shellyId, host).call('Switch.Set', { id: channel, on });
+    return rpcFor(shellyId, host).call(command.rpc.method, command.rpc.params);
   }
 
   /**
@@ -268,37 +273,37 @@ export function createShellyClient({
   }
 
   /**
-   * Turn a relay channel on or off, over whichever transport works.
+   * Send a command (commands.js) over whichever transport works.
    * @param {object} target the device to reach
    * @param {string} target.shellyId the Shelly device id
    * @param {string} [target.host] last known IP address or hostname
-   * @param {number} channel relay channel index
-   * @param {boolean} on desired state
+   * @param {number} [target.gen] hardware generation
+   * @param {object} command the command, spelled for every transport
    * @returns {Promise<string>} the transport that carried the command
    */
-  async function setSwitch({ shellyId, host, gen = 2 }, channel, on) {
+  async function sendCommand({ shellyId, host, gen = 2 }, command) {
     const config = getConfig();
-    const cloudUsable = isCloudConfigured(config);
+    const cloudUsable = isCloudConfigured(config) && Boolean(command.cloud);
     const localFirst = config.preferLocal && Boolean(host);
 
     // A command is a deliberate user action. When there is no cloud to fall
     // back on, the local call is the ONLY path: pay the timeout rather than
     // refusing a click because the poll loop parked the device.
-    const runSwitch = () => localSetSwitch(shellyId, host, gen, channel, on);
+    const runLocal = () => localCommand(shellyId, host, gen, command);
     const bypassCooldown = !cloudUsable;
 
     let localError;
     if (localFirst) {
-      const attempt = await tryLocal(shellyId, host, runSwitch, { bypassCooldown });
+      const attempt = await tryLocal(shellyId, host, runLocal, { bypassCooldown });
       if (attempt.ok) {
         return DEVICE_TRANSPORTS.LOCAL;
       }
       localError = attempt.error;
     }
 
-    if (mqttHub && mqttHub.knows(shellyId)) {
+    if (mqttHub && mqttHub.knows(shellyId) && gen !== 1) {
       try {
-        await mqttHub.request(shellyId, 'Switch.Set', { id: channel, on });
+        await mqttHub.request(shellyId, command.rpc.method, command.rpc.params);
         return DEVICE_TRANSPORTS.LOCAL;
       } catch (mqttError) {
         logger.debug(`${shellyId}: MQTT command failed (${mqttError.message})`);
@@ -307,7 +312,7 @@ export function createShellyClient({
 
     if (cloudUsable) {
       try {
-        await cloud.setRelay(shellyId, channel, on);
+        await cloud.command(shellyId, command.cloud.path, command.cloud.body);
         return DEVICE_TRANSPORTS.CLOUD;
       } catch (cloudError) {
         throw localError || cloudError;
@@ -315,7 +320,7 @@ export function createShellyClient({
     }
 
     if (!localFirst && host) {
-      const attempt = await tryLocal(shellyId, host, runSwitch, { bypassCooldown });
+      const attempt = await tryLocal(shellyId, host, runLocal, { bypassCooldown });
       if (attempt.ok) {
         return DEVICE_TRANSPORTS.LOCAL;
       }
@@ -325,5 +330,29 @@ export function createShellyClient({
     throw localError || new Error(`${shellyId}: no usable transport to send the command`);
   }
 
-  return { getStatus, setSwitch, reset, rpcFor };
+  /**
+   * Turn a relay channel on or off, over whichever transport works.
+   * @param {object} target the device to reach
+   * @param {number} channel relay channel index
+   * @param {boolean} on desired state
+   * @returns {Promise<string>} the transport that carried the command
+   */
+  function setSwitch(target, channel, on) {
+    return sendCommand(
+      target,
+      buildCommand({ family: 'switch', index: channel, suffix: 'binary' }, on ? 1 : 0),
+    );
+  }
+
+  /**
+   * Read the circuit-breaker state of a device, for the diagnostic.
+   * @param {string} shellyId the Shelly device id
+   * @returns {object|undefined} the breaker entry
+   */
+  function localHealth(shellyId) {
+    const entry = circuit.get(shellyId);
+    return entry ? { ...entry } : undefined;
+  }
+
+  return { getStatus, sendCommand, setSwitch, reset, rpcFor, localHealth };
 }

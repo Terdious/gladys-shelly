@@ -65,7 +65,7 @@ function setNumber(target, key, value) {
  * @param {object} normalized the document being built
  */
 function normalizeRelays(status, normalized) {
-  const relays = Array.isArray(status.relays) ? status.relays : [];
+  const relays = Array.isArray(status.relays) && status.mode !== 'roller' ? status.relays : [];
   const meters = Array.isArray(status.meters) ? status.meters : [];
 
   relays.forEach((relay, index) => {
@@ -152,6 +152,91 @@ function normalizeEnergyMeters(status, normalized) {
   }
 }
 
+/** Gen1 roller `state` (the direction of the last move) -> Gen2+ cover state. */
+const GEN1_ROLLER_STATES = { open: 'open', close: 'closed', stop: 'stopped' };
+
+/**
+ * Normalize the `rollers[]` array (Shelly 2.5 in roller mode) into `cover:N`.
+ *
+ * A Gen1 roller reports its position only once calibrated (`positioning`), the
+ * same rule `pos_control` carries on Gen2+, so it maps to it.
+ *
+ * A 2.5 reports either `relays[]` or `rollers[]` according to its mode; should
+ * a firmware report both, the rollers win only when the document says the
+ * device is in roller mode, so an existing relay install never changes shape.
+ *
+ * @param {object} status the raw Gen1 `/status` document
+ * @param {object} normalized the document being built
+ */
+function normalizeRollers(status, normalized) {
+  const rollers = Array.isArray(status.rollers) ? status.rollers : [];
+  if (rollers.length === 0 || (Array.isArray(status.relays) && status.mode !== 'roller')) {
+    return;
+  }
+  rollers.forEach((roller, index) => {
+    const component = {
+      id: index,
+      state: GEN1_ROLLER_STATES[roller?.state] ?? null,
+      pos_control: roller?.positioning === true,
+    };
+    if (roller?.positioning === true) {
+      setNumber(component, 'current_pos', roller.current_pos);
+    }
+    setNumber(component, 'apower', roller?.power);
+    normalized[`${COMPONENT.COVER}:${index}`] = component;
+  });
+}
+
+/**
+ * Normalize the `lights[]` array (Dimmer, Bulb, Duo, RGBW2 in colour mode).
+ *
+ * A light in colour mode (`mode: "color"`) becomes an `rgbw:N` whose
+ * brightness is the Gen1 `gain`; a light reporting a colour temperature
+ * (`temp`, Duo) becomes a `cct:N`; anything else is a dimmer, `light:N`.
+ *
+ * @param {object} status the raw Gen1 `/status` document
+ * @param {object} normalized the document being built
+ */
+function normalizeLights(status, normalized) {
+  const lights = Array.isArray(status.lights) ? status.lights : [];
+  const meters = Array.isArray(status.meters) ? status.meters : [];
+  lights.forEach((light, index) => {
+    const component = { id: index, output: Boolean(light?.ison) };
+    let family = COMPONENT.LIGHT;
+    if (light?.mode === 'color') {
+      family = COMPONENT.RGBW;
+      if ([light.red, light.green, light.blue].every(isNumber)) {
+        component.rgb = [light.red, light.green, light.blue];
+      }
+      setNumber(component, 'brightness', light.gain);
+      setNumber(component, 'white', light.white);
+    } else {
+      setNumber(component, 'brightness', light?.brightness);
+      if (isNumber(light?.temp)) {
+        family = COMPONENT.CCT;
+        component.ct = light.temp;
+      }
+    }
+    setNumber(component, 'apower', meters[index]?.power);
+    normalized[`${family}:${index}`] = component;
+  });
+}
+
+/**
+ * Normalize the `inputs[]` array (Shelly i3, the SW inputs of a 1/2.5) into
+ * switch-mode `input:N` components.
+ * @param {object} status the raw Gen1 `/status` document
+ * @param {object} normalized the document being built
+ */
+function normalizeInputs(status, normalized) {
+  const inputs = Array.isArray(status.inputs) ? status.inputs : [];
+  inputs.forEach((input, index) => {
+    if (input && (input.input === 0 || input.input === 1)) {
+      normalized[`${COMPONENT.INPUT}:${index}`] = { id: index, state: input.input === 1 };
+    }
+  });
+}
+
 /**
  * Normalize the sensors a Gen1 device may expose.
  *
@@ -189,6 +274,9 @@ export function normalizeGen1Status(status) {
     return normalized;
   }
   normalizeRelays(status, normalized);
+  normalizeRollers(status, normalized);
+  normalizeLights(status, normalized);
+  normalizeInputs(status, normalized);
   normalizeEnergyMeters(status, normalized);
   normalizeSensors(status, normalized);
   return normalized;
@@ -206,6 +294,12 @@ export function normalizeGen1Settings(settings) {
   relays.forEach((relay, index) => {
     if (relay && typeof relay.name === 'string' && relay.name !== '') {
       normalized[`${COMPONENT.SWITCH}:${index}`] = { name: relay.name };
+    }
+  });
+  const rollers = Array.isArray(settings?.rollers) ? settings.rollers : [];
+  rollers.forEach((roller, index) => {
+    if (roller && typeof roller.name === 'string' && roller.name !== '') {
+      normalized[`${COMPONENT.COVER}:${index}`] = { name: roller.name };
     }
   });
   return normalized;

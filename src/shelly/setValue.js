@@ -13,8 +13,8 @@
 
 import { logger } from '@gladysassistant/integration-sdk';
 
-import { readHost, readShellyId } from './deviceMapping.js';
-import { COMPONENT } from './constants.js';
+import { buildCommand } from './commands.js';
+import { readGeneration, readHost, readShellyId } from './deviceMapping.js';
 
 /**
  * Parse the component coordinates out of a feature external id.
@@ -61,19 +61,19 @@ export async function setDeviceValue({ gladys, client }, { device, feature, valu
     throw new Error(`Unsupported feature external id: ${feature?.external_id}`);
   }
 
-  const { family, index, suffix } = parsed;
-  if (family !== COMPONENT.SWITCH || suffix !== 'binary') {
-    // Everything else discovered today is a read-only measurement; a writable
-    // family added later gets its branch here.
+  const command = buildCommand(parsed, value);
+  if (!command) {
+    // Everything else discovered is a read-only measurement.
     throw new Error(`Feature ${feature.external_id} is not controllable`);
   }
 
-  const target = { shellyId, host: readHost(device) };
-  const on = Number(value) === 1;
-  const transport = await client.setSwitch(target, index, on);
-  logger.info(`${shellyId} switch:${index} -> ${on ? 'on' : 'off'} (over ${transport})`);
+  const target = { shellyId, host: readHost(device), gen: readGeneration(device) };
+  const transport = await client.sendCommand(target, command);
+  logger.info(
+    `${shellyId} ${parsed.family}:${parsed.index} -> ${command.label} (over ${transport})`,
+  );
 
   // Optimistic feedback: the poll loop confirms the real state on the next
-  // cycle, but the user must see the switch move NOW, not in 30 seconds.
-  await gladys.publishState(feature.external_id, on ? 1 : 0);
+  // cycle, but the user must see the control move NOW, not in 30 seconds.
+  await gladys.publishState(feature.external_id, command.state);
 }

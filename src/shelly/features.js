@@ -19,6 +19,7 @@ import {
 } from '@gladysassistant/integration-sdk';
 
 import { COMPONENT, EM_PHASES } from './constants.js';
+import { featureName } from './featureNames.js';
 import { buildFeatureSelector } from './selector.js';
 
 /**
@@ -65,7 +66,7 @@ function switchSpecs(id) {
   return [
     {
       key: `${prefix}:binary`,
-      name: 'On/Off',
+      nameKey: 'on_off',
       category: DEVICE_FEATURE_CATEGORIES.SWITCH,
       type: DEVICE_FEATURE_TYPES.SWITCH.BINARY,
       min: 0,
@@ -82,7 +83,7 @@ function switchSpecs(id) {
       // Real-time lane: the value a control scene reacts to (battery steering,
       // load shedding). See STATE_RATE_LIMIT_PER_MINUTE in telemetry.js.
       realtime: true,
-      name: 'Power',
+      nameKey: 'power',
       category: DEVICE_FEATURE_CATEGORIES.SWITCH,
       type: DEVICE_FEATURE_TYPES.SWITCH.POWER,
       unit: DEVICE_FEATURE_UNITS.WATT,
@@ -93,7 +94,7 @@ function switchSpecs(id) {
     },
     {
       key: `${prefix}:voltage`,
-      name: 'Voltage',
+      nameKey: 'voltage',
       category: DEVICE_FEATURE_CATEGORIES.SWITCH,
       type: DEVICE_FEATURE_TYPES.SWITCH.VOLTAGE,
       unit: DEVICE_FEATURE_UNITS.VOLT,
@@ -104,7 +105,7 @@ function switchSpecs(id) {
     },
     {
       key: `${prefix}:current`,
-      name: 'Current',
+      nameKey: 'current',
       category: DEVICE_FEATURE_CATEGORIES.SWITCH,
       type: DEVICE_FEATURE_TYPES.SWITCH.CURRENT,
       unit: DEVICE_FEATURE_UNITS.AMPERE,
@@ -115,7 +116,7 @@ function switchSpecs(id) {
     },
     {
       key: `${prefix}:energy`,
-      name: 'Total energy',
+      nameKey: 'total_energy',
       category: DEVICE_FEATURE_CATEGORIES.SWITCH,
       type: DEVICE_FEATURE_TYPES.SWITCH.ENERGY,
       unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
@@ -126,7 +127,7 @@ function switchSpecs(id) {
     },
     {
       key: `${prefix}:temperature`,
-      name: 'Internal temperature',
+      nameKey: 'internal_temperature',
       category: DEVICE_FEATURE_CATEGORIES.DEVICE_TEMPERATURE_SENSOR,
       type: DEVICE_FEATURE_TYPES.SENSOR.DECIMAL,
       unit: DEVICE_FEATURE_UNITS.CELSIUS,
@@ -154,7 +155,8 @@ function emSpecs(id) {
       // to. Leaving it on the 30 s cycle while the total refreshes every 5 s is
       // what made the same device look fast and slow at the same time.
       realtime: true,
-      name: `${label.toUpperCase()} active power`,
+      nameKey: 'active_power',
+      phase: label.toUpperCase(),
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
       unit: DEVICE_FEATURE_UNITS.WATT,
@@ -165,7 +167,8 @@ function emSpecs(id) {
     },
     {
       key: `${prefix}:${label}_apparent_power`,
-      name: `${label.toUpperCase()} apparent power`,
+      nameKey: 'apparent_power',
+      phase: label.toUpperCase(),
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
       unit: DEVICE_FEATURE_UNITS.VOLT_AMPERE,
@@ -176,7 +179,8 @@ function emSpecs(id) {
     },
     {
       key: `${prefix}:${label}_voltage`,
-      name: `${label.toUpperCase()} voltage`,
+      nameKey: 'voltage',
+      phase: label.toUpperCase(),
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.VOLTAGE,
       unit: DEVICE_FEATURE_UNITS.VOLT,
@@ -187,7 +191,8 @@ function emSpecs(id) {
     },
     {
       key: `${prefix}:${label}_current`,
-      name: `${label.toUpperCase()} current`,
+      nameKey: 'current',
+      phase: label.toUpperCase(),
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.CURRENT,
       unit: DEVICE_FEATURE_UNITS.AMPERE,
@@ -205,7 +210,7 @@ function emSpecs(id) {
       // Real-time lane: the value a control scene reacts to (battery steering,
       // load shedding). See STATE_RATE_LIMIT_PER_MINUTE in telemetry.js.
       realtime: true,
-      name: 'Total active power',
+      nameKey: 'total_active_power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
       unit: DEVICE_FEATURE_UNITS.WATT,
@@ -216,7 +221,7 @@ function emSpecs(id) {
     },
     {
       key: `${prefix}:total_apparent_power`,
-      name: 'Total apparent power',
+      nameKey: 'total_apparent_power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
       unit: DEVICE_FEATURE_UNITS.VOLT_AMPERE,
@@ -227,7 +232,7 @@ function emSpecs(id) {
     },
     {
       key: `${prefix}:total_current`,
-      name: 'Total current',
+      nameKey: 'total_current',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.CURRENT,
       unit: DEVICE_FEATURE_UNITS.AMPERE,
@@ -238,7 +243,7 @@ function emSpecs(id) {
     },
     {
       key: `${prefix}:neutral_current`,
-      name: 'Neutral current',
+      nameKey: 'neutral_current',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.CURRENT,
       unit: DEVICE_FEATURE_UNITS.AMPERE,
@@ -265,7 +270,8 @@ function emDataSpecs(id) {
   const perPhase = EM_PHASES.flatMap(({ prefix: p, label }) => [
     {
       key: `${prefix}:${label}_total_energy`,
-      name: `${label.toUpperCase()} total energy`,
+      nameKey: 'total_energy',
+      phase: label.toUpperCase(),
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
       unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
@@ -276,7 +282,8 @@ function emDataSpecs(id) {
     },
     {
       key: `${prefix}:${label}_total_returned_energy`,
-      name: `${label.toUpperCase()} total returned energy`,
+      nameKey: 'total_returned_energy',
+      phase: label.toUpperCase(),
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
       unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
@@ -291,7 +298,7 @@ function emDataSpecs(id) {
     ...perPhase,
     {
       key: `${prefix}:total_energy`,
-      name: 'Total energy',
+      nameKey: 'total_energy',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
       unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
@@ -302,7 +309,7 @@ function emDataSpecs(id) {
     },
     {
       key: `${prefix}:total_returned_energy`,
-      name: 'Total returned energy',
+      nameKey: 'total_returned_energy',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
       unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
@@ -328,7 +335,7 @@ function em1Specs(id) {
       // Real-time lane: the value a control scene reacts to (battery steering,
       // load shedding). See STATE_RATE_LIMIT_PER_MINUTE in telemetry.js.
       realtime: true,
-      name: 'Active power',
+      nameKey: 'active_power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
       unit: DEVICE_FEATURE_UNITS.WATT,
@@ -339,7 +346,7 @@ function em1Specs(id) {
     },
     {
       key: `${prefix}:apparent_power`,
-      name: 'Apparent power',
+      nameKey: 'apparent_power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
       unit: DEVICE_FEATURE_UNITS.VOLT_AMPERE,
@@ -350,7 +357,7 @@ function em1Specs(id) {
     },
     {
       key: `${prefix}:voltage`,
-      name: 'Voltage',
+      nameKey: 'voltage',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.VOLTAGE,
       unit: DEVICE_FEATURE_UNITS.VOLT,
@@ -361,7 +368,7 @@ function em1Specs(id) {
     },
     {
       key: `${prefix}:current`,
-      name: 'Current',
+      nameKey: 'current',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.CURRENT,
       unit: DEVICE_FEATURE_UNITS.AMPERE,
@@ -384,7 +391,7 @@ function em1DataSpecs(id) {
   return [
     {
       key: `${prefix}:total_energy`,
-      name: 'Total energy',
+      nameKey: 'total_energy',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
       unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
@@ -395,7 +402,7 @@ function em1DataSpecs(id) {
     },
     {
       key: `${prefix}:total_returned_energy`,
-      name: 'Total returned energy',
+      nameKey: 'total_returned_energy',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
       unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
@@ -421,7 +428,7 @@ function pm1Specs(id) {
       // Real-time lane: the value a control scene reacts to (battery steering,
       // load shedding). See STATE_RATE_LIMIT_PER_MINUTE in telemetry.js.
       realtime: true,
-      name: 'Active power',
+      nameKey: 'active_power',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
       unit: DEVICE_FEATURE_UNITS.WATT,
@@ -432,7 +439,7 @@ function pm1Specs(id) {
     },
     {
       key: `${prefix}:voltage`,
-      name: 'Voltage',
+      nameKey: 'voltage',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.VOLTAGE,
       unit: DEVICE_FEATURE_UNITS.VOLT,
@@ -443,7 +450,7 @@ function pm1Specs(id) {
     },
     {
       key: `${prefix}:current`,
-      name: 'Current',
+      nameKey: 'current',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.CURRENT,
       unit: DEVICE_FEATURE_UNITS.AMPERE,
@@ -454,7 +461,7 @@ function pm1Specs(id) {
     },
     {
       key: `${prefix}:energy`,
-      name: 'Total energy',
+      nameKey: 'total_energy',
       category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
       type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
       unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
@@ -475,7 +482,7 @@ function temperatureSpecs(id) {
   return [
     {
       key: `${COMPONENT.TEMPERATURE}:${id}:temperature`,
-      name: 'Temperature',
+      nameKey: 'temperature',
       category: DEVICE_FEATURE_CATEGORIES.TEMPERATURE_SENSOR,
       type: DEVICE_FEATURE_TYPES.SENSOR.DECIMAL,
       unit: DEVICE_FEATURE_UNITS.CELSIUS,
@@ -497,7 +504,7 @@ function humiditySpecs(id) {
   return [
     {
       key: `${COMPONENT.HUMIDITY}:${id}:humidity`,
-      name: 'Humidity',
+      nameKey: 'humidity',
       category: DEVICE_FEATURE_CATEGORIES.HUMIDITY_SENSOR,
       type: DEVICE_FEATURE_TYPES.SENSOR.DECIMAL,
       unit: DEVICE_FEATURE_UNITS.PERCENT,
@@ -520,7 +527,7 @@ function devicePowerSpecs(id) {
   return [
     {
       key: `${COMPONENT.DEVICEPOWER}:${id}:battery`,
-      name: 'Battery',
+      nameKey: 'battery',
       category: DEVICE_FEATURE_CATEGORIES.BATTERY,
       type: DEVICE_FEATURE_TYPES.BATTERY.INTEGER,
       unit: DEVICE_FEATURE_UNITS.PERCENT,
@@ -528,6 +535,316 @@ function devicePowerSpecs(id) {
       max: 100,
       required: 'battery',
       read: (status) => round(get(status, ['battery', 'percent']), 0),
+    },
+  ];
+}
+
+/**
+ * Metering specs shared by the cover and light components, which report the
+ * same `apower` / `voltage` / `current` / `aenergy` / `temperature` fields as a
+ * `switch:N`. They sit in neutral measurement categories: a shutter has no
+ * power type of its own in Gladys, and a light keeps only its `power` there.
+ * @param {string} prefix component key, e.g. `cover:0`
+ * @param {object} [options] mapping options
+ * @param {boolean} [options.lightPower] map the power to `light` / `power`
+ * @returns {object[]} the feature specs
+ */
+function meteringSpecs(prefix, { lightPower = false } = {}) {
+  return [
+    {
+      key: `${prefix}:power`,
+      realtime: true,
+      nameKey: 'power',
+      category: lightPower
+        ? DEVICE_FEATURE_CATEGORIES.LIGHT
+        : DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
+      type: lightPower
+        ? DEVICE_FEATURE_TYPES.LIGHT.POWER
+        : DEVICE_FEATURE_TYPES.ENERGY_SENSOR.POWER,
+      unit: DEVICE_FEATURE_UNITS.WATT,
+      min: 0,
+      max: 30000,
+      required: 'apower',
+      read: (status) => round(status.apower, 1),
+    },
+    {
+      key: `${prefix}:voltage`,
+      nameKey: 'voltage',
+      category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
+      type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.VOLTAGE,
+      unit: DEVICE_FEATURE_UNITS.VOLT,
+      min: 0,
+      max: 500,
+      required: 'voltage',
+      read: (status) => round(status.voltage, 1),
+    },
+    {
+      key: `${prefix}:current`,
+      nameKey: 'current',
+      category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
+      type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.CURRENT,
+      unit: DEVICE_FEATURE_UNITS.AMPERE,
+      min: 0,
+      max: 100,
+      required: 'current',
+      read: (status) => round(status.current, 3),
+    },
+    {
+      key: `${prefix}:energy`,
+      nameKey: 'total_energy',
+      category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
+      type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
+      unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
+      min: 0,
+      max: 1000000,
+      required: 'aenergy',
+      read: (status) => toKilowattHours(get(status, ['aenergy', 'total'])),
+    },
+    {
+      key: `${prefix}:temperature`,
+      nameKey: 'internal_temperature',
+      category: DEVICE_FEATURE_CATEGORIES.DEVICE_TEMPERATURE_SENSOR,
+      type: DEVICE_FEATURE_TYPES.SENSOR.DECIMAL,
+      unit: DEVICE_FEATURE_UNITS.CELSIUS,
+      min: -30,
+      max: 150,
+      required: 'temperature',
+      read: (status) => round(get(status, ['temperature', 'tC']), 1),
+    },
+  ];
+}
+
+/**
+ * Shelly cover state -> Gladys shutter state (COVER_STATE: 1 open, -1 close,
+ * 0 stop). A moving cover reports its direction, which is what the Gladys
+ * shutter control highlights; `calibrating` has no Gladys equivalent and is
+ * left unpublished rather than guessed.
+ */
+export const COVER_STATE_VALUES = {
+  open: 1,
+  opening: 1,
+  closed: -1,
+  closing: -1,
+  stopped: 0,
+};
+
+/**
+ * Build the feature specs of a `cover:N` component (roller shutters, Plus/Pro
+ * 2PM in cover mode, Gen1 2.5 in roller mode).
+ *
+ * The position only exists on a CALIBRATED cover: `pos_control: false` or a
+ * missing `current_pos` drops it, as no command could ever drive it. Shelly
+ * and Gladys agree on the direction (100 = fully open), pinned by a test.
+ *
+ * @param {number} id component index
+ * @returns {object[]} the feature specs
+ */
+function coverSpecs(id) {
+  const prefix = `${COMPONENT.COVER}:${id}`;
+  return [
+    {
+      key: `${prefix}:state`,
+      nameKey: 'shutter',
+      category: DEVICE_FEATURE_CATEGORIES.SHUTTER,
+      type: DEVICE_FEATURE_TYPES.SHUTTER.STATE,
+      min: -1,
+      max: 1,
+      read_only: false,
+      has_feedback: true,
+      required: 'state',
+      read: (status) => COVER_STATE_VALUES[status.state],
+    },
+    {
+      key: `${prefix}:position`,
+      nameKey: 'position',
+      category: DEVICE_FEATURE_CATEGORIES.SHUTTER,
+      type: DEVICE_FEATURE_TYPES.SHUTTER.POSITION,
+      unit: DEVICE_FEATURE_UNITS.PERCENT,
+      min: 0,
+      max: 100,
+      read_only: false,
+      has_feedback: true,
+      required: 'current_pos',
+      present: (status) => status.pos_control !== false && typeof status.current_pos === 'number',
+      read: (status) => round(status.current_pos, 0),
+    },
+    ...meteringSpecs(prefix),
+  ];
+}
+
+/** Colour temperature range of the Shelly CCT outputs, in kelvin. */
+export const CCT_MIN_KELVIN = 2700;
+export const CCT_MAX_KELVIN = 6500;
+
+/**
+ * Kelvin <-> mired. Gladys light temperatures are mireds (the zigbee2mqtt and
+ * Hue convention, 153 = cold, 500 = warm); Shelly speaks kelvin.
+ * @param {number} value a temperature in one unit
+ * @returns {number|undefined} the temperature in the other unit
+ */
+export function kelvinToMired(value) {
+  return typeof value === 'number' && value > 0 ? Math.round(1000000 / value) : undefined;
+}
+export const miredToKelvin = kelvinToMired;
+
+/**
+ * `[r, g, b]` (0-255 each) -> the integer Gladys stores for a colour
+ * (`0xRRGGBB`), and back.
+ * @param {unknown} rgb the Shelly colour array
+ * @returns {number|undefined} the integer colour
+ */
+export function rgbToInt(rgb) {
+  if (!Array.isArray(rgb) || rgb.length < 3 || rgb.some((c) => typeof c !== 'number')) {
+    return undefined;
+  }
+  const [r, g, b] = rgb.map((c) => Math.min(Math.max(Math.round(c), 0), 255));
+  return r * 65536 + g * 256 + b;
+}
+
+/**
+ * @param {number} value the integer colour (`0xRRGGBB`)
+ * @returns {number[]} the Shelly `[r, g, b]` array
+ */
+export function intToRgb(value) {
+  const color = Math.min(Math.max(Math.round(Number(value) || 0), 0), 0xffffff);
+  return [(color >> 16) & 255, (color >> 8) & 255, color & 255];
+}
+
+/**
+ * Build the feature specs of a light output: `light:N` (dimmers), `rgb:N`,
+ * `rgbw:N` (colour) and `cct:N` (tunable white). They share on/off, brightness
+ * and metering; colour and colour temperature only exist on their family.
+ * @param {string} family component family
+ * @param {number} id component index
+ * @returns {object[]} the feature specs
+ */
+function lightSpecs(family, id) {
+  const prefix = `${family}:${id}`;
+  const specs = [
+    {
+      key: `${prefix}:binary`,
+      nameKey: 'on_off',
+      category: DEVICE_FEATURE_CATEGORIES.LIGHT,
+      type: DEVICE_FEATURE_TYPES.LIGHT.BINARY,
+      min: 0,
+      max: 1,
+      read_only: false,
+      has_feedback: true,
+      required: 'output',
+      read: (status) => (status.output ? 1 : 0),
+    },
+    {
+      key: `${prefix}:brightness`,
+      nameKey: 'brightness',
+      category: DEVICE_FEATURE_CATEGORIES.LIGHT,
+      type: DEVICE_FEATURE_TYPES.LIGHT.BRIGHTNESS,
+      unit: DEVICE_FEATURE_UNITS.PERCENT,
+      min: 0,
+      max: 100,
+      read_only: false,
+      has_feedback: true,
+      required: 'brightness',
+      requiredNonNull: true,
+      read: (status) => round(status.brightness, 0),
+    },
+  ];
+  if (family === COMPONENT.RGB || family === COMPONENT.RGBW) {
+    specs.push({
+      key: `${prefix}:color`,
+      nameKey: 'color',
+      category: DEVICE_FEATURE_CATEGORIES.LIGHT,
+      type: DEVICE_FEATURE_TYPES.LIGHT.COLOR,
+      min: 0,
+      max: 16777215,
+      read_only: false,
+      has_feedback: true,
+      required: 'rgb',
+      requiredNonNull: true,
+      read: (status) => rgbToInt(status.rgb),
+    });
+  }
+  if (family === COMPONENT.CCT) {
+    specs.push({
+      key: `${prefix}:temperature`,
+      nameKey: 'color_temperature',
+      category: DEVICE_FEATURE_CATEGORIES.LIGHT,
+      type: DEVICE_FEATURE_TYPES.LIGHT.TEMPERATURE,
+      min: kelvinToMired(CCT_MAX_KELVIN),
+      max: kelvinToMired(CCT_MIN_KELVIN),
+      read_only: false,
+      has_feedback: true,
+      required: 'ct',
+      requiredNonNull: true,
+      read: (status) => kelvinToMired(status.ct),
+    });
+  }
+  return [...specs, ...meteringSpecs(prefix, { lightPower: true })];
+}
+
+/**
+ * Button events of an `input:N` in button mode -> Gladys BUTTON_STATUS
+ * values (click 1, double click 2, long click 6, triple 18).
+ */
+export const BUTTON_EVENT_VALUES = {
+  single_push: 1,
+  double_push: 2,
+  long_push: 6,
+  triple_push: 18,
+};
+
+/**
+ * Build the feature specs of an `input:N` component.
+ *
+ * Its shape depends on the input mode (Shelly.GetConfig), and the status alone
+ * tells them apart, so no config read is needed:
+ *   - switch mode: `state` is a boolean -> a read-only binary input;
+ *   - button mode: `state` is null and the presses arrive as `NotifyEvent`
+ *     -> a button feature, fed by the push channel only (a poll never sees a
+ *     press), plus the `input_event` scene trigger;
+ *   - count mode: `counts.total` -> a counter.
+ * Analog inputs (`percent`) have no matching Gladys category yet and are left
+ * out rather than misfiled.
+ *
+ * @param {number} id component index
+ * @returns {object[]} the feature specs
+ */
+function inputSpecs(id) {
+  const prefix = `${COMPONENT.INPUT}:${id}`;
+  return [
+    {
+      key: `${prefix}:binary`,
+      realtime: true,
+      nameKey: 'input',
+      category: DEVICE_FEATURE_CATEGORIES.INPUT,
+      type: DEVICE_FEATURE_TYPES.INPUT.BINARY,
+      min: 0,
+      max: 1,
+      required: 'state',
+      present: (status) => typeof status.state === 'boolean',
+      read: (status) => (typeof status.state === 'boolean' ? (status.state ? 1 : 0) : undefined),
+    },
+    {
+      key: `${prefix}:button`,
+      nameKey: 'button',
+      category: DEVICE_FEATURE_CATEGORIES.BUTTON,
+      type: DEVICE_FEATURE_TYPES.BUTTON.CLICK,
+      min: 0,
+      max: 25,
+      required: 'state',
+      present: (status) => status.state === null,
+      // A press is an event, never a status field.
+      read: () => undefined,
+    },
+    {
+      key: `${prefix}:counter`,
+      nameKey: 'counter',
+      category: DEVICE_FEATURE_CATEGORIES.COUNTER_SENSOR,
+      type: DEVICE_FEATURE_TYPES.SENSOR.INTEGER,
+      min: 0,
+      max: 1000000000,
+      required: 'counts',
+      present: (status) => typeof get(status, ['counts', 'total']) === 'number',
+      read: (status) => round(get(status, ['counts', 'total']), 0),
     },
   ];
 }
@@ -543,6 +860,12 @@ const SPEC_BUILDERS = {
   [COMPONENT.TEMPERATURE]: temperatureSpecs,
   [COMPONENT.HUMIDITY]: humiditySpecs,
   [COMPONENT.DEVICEPOWER]: devicePowerSpecs,
+  [COMPONENT.COVER]: coverSpecs,
+  [COMPONENT.LIGHT]: (id) => lightSpecs(COMPONENT.LIGHT, id),
+  [COMPONENT.RGB]: (id) => lightSpecs(COMPONENT.RGB, id),
+  [COMPONENT.RGBW]: (id) => lightSpecs(COMPONENT.RGBW, id),
+  [COMPONENT.CCT]: (id) => lightSpecs(COMPONENT.CCT, id),
+  [COMPONENT.INPUT]: inputSpecs,
 };
 
 /**
@@ -581,11 +904,16 @@ export function buildFeatureSpecs(status) {
           if (!(spec.required in componentStatus)) {
             return false;
           }
+          // A shape that depends on the component's mode (an input in button
+          // or switch mode, an uncalibrated cover) says so with `present`.
+          if (spec.present && !spec.present(componentStatus)) {
+            return false;
+          }
           // Some fields are always present but null when the hardware is not
           // wired for them (a neutral clamp, an unplugged probe).
           return !spec.requiredNonNull || componentStatus[spec.required] != null;
         })
-        .map((spec) => ({ ...spec, componentKey }));
+        .map((spec) => ({ ...spec, name: featureName(spec), componentKey }));
     })
     .sort((a, b) => a.key.localeCompare(b.key));
 }

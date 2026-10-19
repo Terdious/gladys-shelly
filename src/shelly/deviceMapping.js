@@ -15,6 +15,7 @@ import {
   PARAM_SHELLY_ID,
   PARAM_SHELLY_MODEL,
 } from './constants.js';
+import { featureName } from './featureNames.js';
 import { buildFeatureSpecs, toGladysFeature } from './features.js';
 import { buildDeviceSelector } from './selector.js';
 
@@ -45,24 +46,26 @@ export function buildDeviceName({ info, config }) {
  * @param {object} spec the feature spec
  * @param {object} [config] the `Shelly.GetConfig` result
  * @param {number} channelCount number of channels of the spec family
+ * @param {string} [language] language of the generic part of the name
  * @returns {string} the feature name
  */
-function buildFeatureName(spec, config, channelCount) {
+function buildFeatureName(spec, config, channelCount, language) {
+  const name = featureName(spec, language);
   const componentConfig = config?.[spec.componentKey];
   const channelName =
     typeof componentConfig?.name === 'string' && componentConfig.name.trim() !== ''
       ? componentConfig.name.trim()
       : undefined;
   if (channelName) {
-    return `${channelName} — ${spec.name}`;
+    return `${channelName} — ${name}`;
   }
   // No user-set name: only disambiguate when there is something to
   // disambiguate, so a single-channel plug keeps a clean "On/Off".
   if (channelCount > 1) {
     const [family, id] = spec.componentKey.split(':');
-    return `${spec.name} (${family} ${id})`;
+    return `${name} (${family} ${id})`;
   }
-  return spec.name;
+  return name;
 }
 
 /**
@@ -73,9 +76,10 @@ function buildFeatureName(spec, config, channelCount) {
  * @param {object} [params.config] the `Shelly.GetConfig` result
  * @param {string} [params.host] IP address or hostname the device answered on
  * @param {object} params.externalIds external id factory of this device
+ * @param {string} [params.language] language of the feature names (en, fr, de, es)
  * @returns {object} the Gladys device
  */
-export function buildDevice({ info, status, config, host, externalIds }) {
+export function buildDevice({ info, status, config, host, externalIds, language }) {
   const specs = buildFeatureSpecs(status);
 
   // Count the channels per component family so single-channel devices keep
@@ -96,7 +100,7 @@ export function buildDevice({ info, status, config, host, externalIds }) {
   const features = specs.map((spec) => {
     const channelCount = channelsByFamily.get(spec.componentKey.split(':')[0])?.size || 1;
     return toGladysFeature(
-      { ...spec, name: buildFeatureName(spec, config, channelCount) },
+      { ...spec, name: buildFeatureName(spec, config, channelCount, language) },
       externalIds.feature,
       selector,
     );

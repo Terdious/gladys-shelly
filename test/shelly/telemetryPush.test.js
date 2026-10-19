@@ -36,6 +36,7 @@ describe('telemetry with the real-time push channel', () => {
   function engineFor(device, rawConfig = {}, { now } = {}) {
     const config = normalizeConfig(rawConfig);
     const published = [];
+    const sceneEvents = [];
     const httpPolls = () => device.calls.filter((c) => c.method === 'Shelly.GetStatus').length;
 
     const gladysDevice = {
@@ -52,6 +53,12 @@ describe('telemetry with the real-time push channel', () => {
       },
       async publishStates(states) {
         published.push(...states);
+      },
+      async publishState(externalId, state) {
+        published.push({ device_feature_external_id: externalId, state });
+      },
+      async publishSceneEvent(key, data) {
+        sceneEvents.push([key, data]);
       },
       async publishTransports() {},
       externalIds(type, platformId) {
@@ -78,7 +85,7 @@ describe('telemetry with the real-time push channel', () => {
       ...(now ? { now } : {}),
     });
     engines.push(telemetry);
-    return { telemetry, published, httpPolls, gladysDevice };
+    return { telemetry, published, sceneEvents, httpPolls, gladysDevice };
   }
 
   const featureId = (device, key) => `ext:shelly:device:${device.info.id}:${key}`;
@@ -105,6 +112,30 @@ describe('telemetry with the real-time push channel', () => {
     );
     // This is the whole point of #2: 30 s of latency becomes ~1 s.
     assert.equal(state.state, 1);
+  });
+
+  it('turns a button pushed on the device into a button state and a scene event', async () => {
+    const device = await startFakeShelly({
+      info: { id: 'shellyplusi4-c4d8d5571234', mac: 'C4D8D5571234', gen: 2 },
+      status: { 'input:0': { id: 0, state: null }, sys: {} },
+    });
+    devices.push(device);
+    const { telemetry, published, sceneEvents } = engineFor(device);
+
+    await telemetry.refreshValues();
+    await waitFor(() => telemetry.wsHub.isLive('shellyplusi4-c4d8d5571234'));
+
+    device.push(
+      { events: [{ component: 'input:0', id: 0, event: 'long_push', ts: 1.5 }] },
+      'NotifyEvent',
+    );
+
+    const state = await waitFor(() =>
+      published.find((s) => s.device_feature_external_id === featureId(device, 'input:0:button')),
+    );
+    assert.equal(state.state, 6);
+    await waitFor(() => sceneEvents.length === 1);
+    assert.equal(sceneEvents[0][1].event, 'long_push');
   });
 
   it('puts control-relevant values on the real-time lane and leaves the rest behind', async () => {
@@ -221,9 +252,9 @@ describe('telemetry with the real-time push channel', () => {
       device.push({ 'em:0': em });
       // The push travels over a real socket: give it a tick to land, otherwise
       // the cycle below drains an empty buffer and the budget never fills.
-       
+
       await new Promise((resolve) => setTimeout(resolve, 5));
-       
+
       await telemetry.refreshValues();
     }
     assert.ok(published.length > 500, `expected a busy fleet, got ${published.length} states`);
@@ -263,9 +294,9 @@ describe('telemetry with the real-time push channel', () => {
       // the measurement window when the controller is next allowed to decide.
       clock.at += 90;
       device.push({ 'em:0': { id: 0, a_act_power: spin } });
-       
+
       await new Promise((resolve) => setTimeout(resolve, 1));
-       
+
       await telemetry.flushFast();
     }
     clock.at += 41000;

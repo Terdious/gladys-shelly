@@ -21,10 +21,17 @@ import { createWsConnection } from './wsRpc.js';
  * @param {() => object} options.getConfig accessor to the current normalized config
  * @param {(shellyId: string, status: object) => void} options.onStatus pushed-status handler
  * @param {(shellyId: string, connected: boolean) => void} [options.onConnectionChange] liveness hook
+ * @param {(shellyId: string, events: object[]) => void} [options.onEvent] pushed-event handler
  * @param {object} [options.WebSocketImpl] WebSocket implementation (tests)
  * @returns {object} the hub
  */
-export function createWsHub({ getConfig, onStatus, onConnectionChange = () => {}, WebSocketImpl }) {
+export function createWsHub({
+  getConfig,
+  onStatus,
+  onConnectionChange = () => {},
+  onEvent = () => {},
+  WebSocketImpl,
+}) {
   /** @type {Map<string, {connection: object, host: string}>} */
   const connections = new Map();
   /** Devices currently pushing, so telemetry can skip polling them. */
@@ -82,6 +89,13 @@ export function createWsHub({ getConfig, onStatus, onConnectionChange = () => {}
             onStatus(shellyId, status);
           } catch (err) {
             logger.warn(`${shellyId}: failed to apply a pushed status: ${err.message}`);
+          }
+        },
+        onEvent: (events) => {
+          try {
+            onEvent(shellyId, events);
+          } catch (err) {
+            logger.warn(`${shellyId}: failed to handle a pushed event: ${err.message}`);
           }
         },
         onConnectionChange: (connected) => {
