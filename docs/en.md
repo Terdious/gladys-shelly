@@ -1,7 +1,8 @@
 # Shelly integration for Gladys Assistant
 
 This integration connects your **Shelly** devices to Gladys Assistant: relays,
-smart plugs and energy meters.
+smart plugs, energy meters, roller shutters, dimmers and colour lights, inputs
+and buttons.
 
 It talks **directly to your devices on your local network** (the Gen2+ RPC
 protocol) and lets them **push their changes in real time**, so a relay flipped
@@ -28,7 +29,8 @@ empty form**.
 
 ## Requirements
 
-- Gladys Assistant **4.83.0** or newer.
+- Gladys Assistant **5.1.0** or newer (dashboard widgets, scene triggers and
+  scene actions).
 - Your Shelly devices are powered and joined to your Wi-Fi (set up from the
   Shelly app or the device web interface).
 - Gladys and your Shelly devices are on the **same local network** — or you know
@@ -114,6 +116,11 @@ hardware id — so renaming a prefix breaks nothing.
 
 ### Advanced
 
+**Feature names**: the language of the feature names given to the devices you
+create from now on (English, French, German or Spanish). A device already
+created keeps its names — rename its features in Gladys if you wish; their ids,
+history and scenes never depend on the name.
+
 **Refresh interval**: how often Gladys reads the state of every device. 30
 seconds by default.
 
@@ -189,22 +196,66 @@ hard-coded model table: a Shelly Pro 1 (no metering) only exposes an On/Off, a
 Pro 1PM also exposes power, voltage, current and energy — and a Shelly released
 after this version works as long as it speaks the same vocabulary.
 
-| Shelly component      | What you get in Gladys                                                                                                        |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `switch:N`            | On/Off (controllable), power (W), voltage (V), current (A), total energy (kWh), internal temperature (°C)                     |
-| `em:N` (three-phase)  | Per L1/L2/L3 phase: active power (W), apparent power (VA), voltage (V), current (A) — plus the totals and the neutral current |
-| `emdata:N`            | Total and returned energy, per phase and total (kWh)                                                                          |
-| `em1:N` / `em1data:N` | Single-phase equivalents (Shelly Pro EM, 1PM Mini Gen3)                                                                       |
-| `pm1:N`               | Power, voltage, current and energy of a standalone meter (PM Mini)                                                            |
-| `temperature:N`       | Temperature (°C)                                                                                                              |
-| `humidity:N`          | Humidity (%)                                                                                                                  |
-| `devicepower:N`       | Battery level (%)                                                                                                             |
+| Shelly component              | What you get in Gladys                                                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `switch:N`                    | On/Off (controllable), power (W), voltage (V), current (A), total energy (kWh), internal temperature (°C)                     |
+| `cover:N`                     | Shutter open / stop / close (controllable), position (%) once calibrated, power, voltage, current, energy, temperature        |
+| `light:N`                     | Light on/off and brightness (controllable), power and energy                                                                  |
+| `rgb:N` / `rgbw:N`            | Same as `light:N`, plus the colour (controllable)                                                                             |
+| `cct:N`                       | Same as `light:N`, plus the colour temperature (controllable)                                                                 |
+| `input:N`                     | Switch mode: an input (on/off). Button mode: a button and the "Button pressed" scene trigger. Count mode: a counter           |
+| `em:N` (three-phase)          | Per L1/L2/L3 phase: active power (W), apparent power (VA), voltage (V), current (A) — plus the totals and the neutral current |
+| `emdata:N`                    | Total and returned energy, per phase and total (kWh)                                                                          |
+| `em1:N` / `em1data:N`         | Single-phase equivalents (Shelly Pro EM, 1PM Mini Gen3)                                                                       |
+| `pm1:N`                       | Power, voltage, current and energy of a standalone meter (PM Mini)                                                            |
+| `temperature:N`, `humidity:N` | Temperature (°C), humidity (%)                                                                                                |
+| `devicepower:N`               | Battery level (%)                                                                                                             |
 
-Hardware validated by design against real payloads: **Shelly Pro 3EM**,
-**Shelly Pro 4PM**, **Shelly Plus Plug S**.
+Hardware validated against real payloads: **Shelly Pro 3EM**, **Shelly Pro
+4PM**, **Shelly Pro 3**, **Shelly Plus 2PM**, **Shelly Plus Plug S** and the
+**Gen1 3EM**. Shutters, lights and inputs follow the documented Shelly API and
+are waiting for your feedback on real hardware: if you own one, please report
+how it behaves (see [Diagnostic](#diagnostic)).
 
-> **Not supported yet:** roller shutters (`cover`), dimmable lights (`light`),
-> inputs (`input`). See the [roadmap](./ROADMAP.md).
+On **Gen1**, the same model applies: a Shelly 2.5 in roller mode becomes a
+shutter, a Dimmer, a Bulb or a Duo a light, an RGBW2 in colour mode a colour
+light, and the inputs of an i3 inputs. Gen1 has no button events reachable from
+a container (they travel over CoIoT multicast): only the on/off of its inputs is
+reported.
+
+### Roller shutters
+
+A cover exposes the standard Gladys **shutter** control: **Open**, **Stop**,
+**Close**, and a **position** slider. The position (100 % = fully open, the same
+convention in Shelly and in Gladys) only exists once the cover is **calibrated**
+in the Shelly app: an uncalibrated cover has no position feature at all rather
+than one that never moves. Calibrate it, then run a discovery again and click
+**Update** on the device.
+
+While the shutter moves, Gladys shows its direction (opening / closing); once
+it stops, the state reads "stopped" and the position is the real one.
+
+### Lights
+
+Dimmers and colour outputs become Gladys **lights**: on/off, brightness (0 to
+100 %), colour for `rgb` / `rgbw`, colour temperature for `cct` (2700 K warm to
+6500 K cold). Changing the brightness does not switch the light on or off. The
+white channel of an RGBW output and the analog inputs are not exposed yet.
+
+### Inputs and buttons
+
+What an input becomes depends on its **mode** in the Shelly app:
+
+- **Switch** (a wall switch, a dry contact): an **input** feature, on or off,
+  published in real time;
+- **Button** (a push button): a **button** feature, plus the **Button pressed
+  on a Shelly** scene trigger, fired on every single, double, triple or long
+  press — in real time, over the WebSocket or MQTT. A Shelly i4 thus gives four
+  buttons ready for your scenes;
+- **Count**: a **counter**.
+
+Changed the mode of an input in the Shelly app? Run a discovery again and click
+**Update** on the device.
 
 ### The neutral current
 
@@ -233,11 +284,96 @@ changed, or password refused.
 
 ---
 
+## Scenes
+
+In the scene editor, category **Integrations**:
+
+**Triggers**
+
+- **Button pressed on a Shelly** — choose the device, optionally the input (0 to 3) and the presses (single, double, triple, long). The variables
+  `device_name`, `input` and `event` are available to the following actions.
+- **Shelly reachability changed** — a device became unreachable on every
+  transport (local, MQTT and cloud), or answers again. Handy for a notification
+  when the meter of the main board stops reporting.
+
+**Actions**
+
+- **Turn on for a duration** — switches a relay or a light on, and the
+  **Shelly itself** switches it off after the duration (1 second to 1 day). The
+  timer lives in the device: a Gladys restart in between never leaves the pump,
+  the heater or the garden watering running. Output number 0 is the first relay
+  or light of the device, 1 the second, and so on.
+- **Restart a Shelly** — the usual cure for a device that stopped pushing after
+  a Wi-Fi change.
+
+The usual actions (switch on, off, set a position, a brightness...) remain the
+standard Gladys device actions.
+
+---
+
+## Dashboard widgets
+
+Add them from the dashboard editor, **Integrations** column:
+
+- **Shelly energy meter** — for a metering Shelly (Pro 3EM, Pro EM, PM Mini, a
+  plug or a relay with metering): a live power gauge (below zero when you
+  export), one tile per phase or per channel, the total energy, the power chart
+  over the period of your choice, then the voltages, currents, apparent power,
+  power factor and frequency of the last reading, and the source. Set the gauge
+  maximum to your subscribed power.
+- **Shelly switches** — the relays and lights of a room or of the whole house
+  (leave the selection empty for all): state and power of each output, the
+  number switched on, the total power, and **All on** / **All off** buttons
+  (with a confirmation).
+- **Shelly shutters** — a group of shutters: state and position of each, the
+  average position, and **Open**, **Stop**, **Close** and **Position** buttons
+  for the whole group (the position form is pre-filled with the current
+  average).
+- **Shelly network health** — how many devices push in real time, fall back,
+  or are unreachable, then the list of what deserves attention (unreachable,
+  degraded, weak Wi-Fi signal, firmware update available), and the share of the
+  Gladys budget of 300 states per minute in use.
+
+---
+
+## Diagnostic
+
+The **Configuration** screen of the integration has two read-only buttons, made
+for a GitHub issue or a forum post:
+
+- **Diagnostic of the devices** — a text report of the whole installation:
+  configuration (never a password nor the cloud key), WebSocket and MQTT
+  channels, states published over the last minute and the real-time lane
+  cadence, then for each device its transport and whether it is degraded, the
+  age of its last data, the local circuit breaker, its components, Wi-Fi
+  signal, uptime, available firmware update and the state of its outputs. Pick a
+  device to diagnose it alone.
+- **Test a device** — reads one device **now**, at the address the integration
+  uses: `/shelly` identity and answer time, then the full status read (with the
+  password), the components and the features the integration maps, the Wi-Fi
+  signal, and whether it pushes in real time. On failure, the exact error and
+  what to try. It also works for a device **not created in Gladys**: type its IP
+  address — the fastest way to understand why a scan does not find it. It never
+  writes anything to the device.
+
+By default the MAC part of the device ids is shortened and the local addresses
+are hidden, so the report can be pasted publicly as is. Tick **Show device ids
+and local addresses** for a private exchange. The reports are also written to
+the integration logs, always in their masked form.
+
+---
+
 ## Updating the integration
 
 Gladys shows available updates in **Integrations**. Click **Update**: the
 container is recreated with the new image, and your configuration and devices
-are preserved.
+are preserved. The notes of each version are on the
+[GitHub releases page](https://github.com/Terdious/gladys-shelly/releases).
+
+New features of an existing device (a shutter calibrated since, a newly
+supported component) appear after a **discovery**: click **Update** on the
+device marked "Already added". Its existing features, history, scenes and
+dashboards are kept.
 
 ---
 
@@ -252,7 +388,9 @@ are preserved.
 2. **mDNS does not cross VLANs, nor some Wi-Fi access points.** Enter the IP
    addresses by hand in **Additional device addresses**, then save: the
    discovery re-runs automatically.
-3. **Read the container logs** (`docker logs <container>`). The integration logs
+3. **Use "Test a device"** in the Configuration screen with the device IP: it
+   says whether the device answers, refuses the password, or is not a Shelly.
+4. **Read the container logs** (`docker logs <container>`). The integration logs
    how many candidate addresses it has, where each came from, and the exact
    reason an address was discarded.
 
@@ -363,4 +501,7 @@ ones.
 - [Project README](../README.md) — architecture and development
 - [Roadmap](./ROADMAP.md) — what is done, what is coming
 - [Shelly Gen2+ API documentation](https://shelly-api-docs.shelly.cloud/gen2/)
-- [Report an issue](https://github.com/Terdious/gladys-shelly/issues)
+- [Release notes](https://github.com/Terdious/gladys-shelly/releases) and the
+  [changelog](../CHANGELOG.md)
+- [Report an issue](https://github.com/Terdious/gladys-shelly/issues) — attach
+  the report of **Diagnostic of the devices**

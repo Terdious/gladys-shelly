@@ -128,6 +128,7 @@ export function parseWsChallenge(error) {
  * @param {number} [options.port] HTTP port of the device
  * @param {() => {username: string, password: string}} options.getCredentials credentials accessor
  * @param {(status: object) => void} options.onStatus called with each pushed status document
+ * @param {(events: object[]) => void} [options.onEvent] called with the events of each `NotifyEvent`
  * @param {(connected: boolean) => void} [options.onConnectionChange] connection state hook
  * @param {typeof WebSocket} [options.WebSocketImpl] WebSocket implementation (tests)
  * @returns {{close: () => void, isConnected: () => boolean, request: (method: string, params?: object) => Promise<object>}} the connection
@@ -138,6 +139,7 @@ export function createWsConnection({
   port = DEFAULT_HTTP_PORT,
   getCredentials,
   onStatus,
+  onEvent = () => {},
   onConnectionChange = () => {},
   WebSocketImpl = WebSocket,
 }) {
@@ -213,10 +215,12 @@ export function createWsConnection({
       }
       return;
     }
-    // NotifyEvent (button pushes, energy periods) is deliberately not handled
-    // yet — it is what issue #5 needs, and inventing a mapping now would mean
-    // guessing at semantics.
+    // Discrete events (button pushes, energy periods): the caller picks the
+    // ones it maps, the rest are ignored there.
     if (message.method === 'NotifyEvent') {
+      if (Array.isArray(message.params?.events)) {
+        onEvent(message.params.events);
+      }
       return;
     }
 

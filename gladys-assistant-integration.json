@@ -3,17 +3,17 @@
   "type": "device",
   "name": "Shelly",
   "description": {
-    "en": "Connect your Shelly devices (relays, plugs, energy meters) to Gladys Assistant.",
-    "fr": "Connectez vos appareils Shelly (relais, prises, compteurs d'énergie) à Gladys Assistant."
+    "en": "Connect your Shelly devices (relays, plugs, meters, shutters, lights) to Gladys, locally.",
+    "fr": "Connectez vos Shelly (relais, prises, compteurs, volets, lumières) à Gladys, en local.",
+    "de": "Verbinde deine Shelly-Geräte (Relais, Stecker, Zähler, Rollläden, Lichter) lokal mit Gladys.",
+    "es": "Conecte sus Shelly (relés, enchufes, medidores, persianas, luces) a Gladys, en local."
   },
   "version": "1.0.0",
   "docker_image": "ghcr.io/terdious/gladys-shelly:1.0.0",
-  "gladys_version": ">=4.83.0",
+  "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/Terdious/gladys-shelly/master/cover.png",
-  "transports": [
-    "local",
-    "cloud"
-  ],
+  "transports": ["local", "cloud"],
+  "categories": ["energy", "lighting"],
   "network_discovery": [
     {
       "type": "mdns",
@@ -30,18 +30,24 @@
       "type": "section",
       "label": {
         "en": "Local connection (recommended)",
-        "fr": "Connexion locale (recommandée)"
+        "fr": "Connexion locale (recommandée)",
+        "de": "Lokale Verbindung (empfohlen)",
+        "es": "Conexión local (recomendada)"
       },
       "description": {
-        "en": "Gladys talks to your Shelly devices directly on your network, with no cloud in between: faster, and it keeps working when the Internet is down. Devices announce themselves over mDNS and are found automatically when you run a scan — nothing to fill in here unless your devices are password-protected or invisible to mDNS. Gen2 and later are supported (Plus, Pro, Mini, Gen3, Gen4); Gen1 devices are not supported yet.",
-        "fr": "Gladys communique directement avec vos Shelly sur votre réseau, sans passer par le cloud : plus rapide, et ça continue de fonctionner quand Internet est coupé. Les appareils s'annoncent en mDNS et sont trouvés automatiquement lors d'un scan — rien à remplir ici, sauf si vos appareils sont protégés par mot de passe ou invisibles en mDNS. Les Gen2 et suivantes sont supportées (Plus, Pro, Mini, Gen3, Gen4) ; les Gen1 ne le sont pas encore."
+        "en": "Gladys talks to your Shelly devices directly on your network, with no cloud in between: faster, and it keeps working when the Internet is down. Devices announce themselves over mDNS and are found automatically when you run a scan — nothing to fill in here unless your devices are password-protected or invisible to mDNS. Every generation is supported: Gen1, Gen2, Plus, Pro, Mini, Gen3 and Gen4.",
+        "fr": "Gladys communique directement avec vos Shelly sur votre réseau, sans passer par le cloud : plus rapide, et ça continue de fonctionner quand Internet est coupé. Les appareils s'annoncent en mDNS et sont trouvés automatiquement lors d'un scan — rien à remplir ici, sauf si vos appareils sont protégés par mot de passe ou invisibles en mDNS. Toutes les générations sont prises en charge : Gen1, Gen2, Plus, Pro, Mini, Gen3 et Gen4.",
+        "de": "Gladys spricht direkt in deinem Netzwerk mit deinen Shelly-Geräten, ohne Cloud dazwischen: schneller, und es funktioniert auch ohne Internet weiter. Die Geräte melden sich per mDNS an und werden bei einem Scan automatisch gefunden — hier ist nichts auszufüllen, außer deine Geräte sind passwortgeschützt oder per mDNS unsichtbar. Alle Generationen werden unterstützt: Gen1, Gen2, Plus, Pro, Mini, Gen3 und Gen4.",
+        "es": "Gladys se comunica directamente con sus Shelly en su red, sin nube de por medio: más rápido, y sigue funcionando cuando Internet está caído. Los dispositivos se anuncian por mDNS y se encuentran automáticamente al lanzar un escaneo — no hay nada que rellenar aquí, salvo si sus dispositivos están protegidos por contraseña o son invisibles por mDNS. Todas las generaciones son compatibles: Gen1, Gen2, Plus, Pro, Mini, Gen3 y Gen4."
       },
       "links": [
         {
           "url": "https://shelly-api-docs.shelly.cloud/gen2/",
           "label": {
             "en": "Shelly Gen2+ API documentation",
-            "fr": "Documentation de l'API Shelly Gen2+"
+            "fr": "Documentation de l'API Shelly Gen2+",
+            "de": "Dokumentation der Shelly-Gen2+-API",
+            "es": "Documentación de la API Shelly Gen2+"
           }
         }
       ]
@@ -51,15 +57,21 @@
       "type": "string",
       "label": {
         "en": "Additional device addresses",
-        "fr": "Adresses d'appareils supplémentaires"
+        "fr": "Adresses d'appareils supplémentaires",
+        "de": "Zusätzliche Geräteadressen",
+        "es": "Direcciones de dispositivos adicionales"
       },
       "description": {
         "en": "Optional. Comma-separated IP addresses or hostnames of Shelly devices that mDNS does not find (different VLAN, mDNS disabled on the device, static setup). Example: 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local",
-        "fr": "Optionnel. Adresses IP ou noms d'hôte, séparés par des virgules, des Shelly que le mDNS ne trouve pas (autre VLAN, mDNS désactivé sur l'appareil, configuration statique). Exemple : 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local"
+        "fr": "Optionnel. Adresses IP ou noms d'hôte, séparés par des virgules, des Shelly que le mDNS ne trouve pas (autre VLAN, mDNS désactivé sur l'appareil, configuration statique). Exemple : 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local",
+        "de": "Optional. Durch Kommas getrennte IP-Adressen oder Hostnamen von Shelly-Geräten, die mDNS nicht findet (anderes VLAN, mDNS am Gerät deaktiviert, statische Einrichtung). Beispiel: 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local",
+        "es": "Opcional. Direcciones IP o nombres de host, separados por comas, de los Shelly que el mDNS no encuentra (otra VLAN, mDNS desactivado en el dispositivo, configuración estática). Ejemplo: 10.5.0.171, 10.5.0.172, shellypro4pm-ece334ea4d10.local"
       },
       "placeholder": {
         "en": "10.5.0.171, 10.5.0.172",
-        "fr": "10.5.0.171, 10.5.0.172"
+        "fr": "10.5.0.171, 10.5.0.172",
+        "de": "10.5.0.171, 10.5.0.172",
+        "es": "10.5.0.171, 10.5.0.172"
       },
       "required": false
     },
@@ -68,11 +80,15 @@
       "type": "string",
       "label": {
         "en": "Device username",
-        "fr": "Nom d'utilisateur des appareils"
+        "fr": "Nom d'utilisateur des appareils",
+        "de": "Benutzername der Geräte",
+        "es": "Usuario de los dispositivos"
       },
       "description": {
         "en": "Only if you enabled authentication on your Shelly devices. On Gen2+ the username is always 'admin' — leave it as is.",
-        "fr": "Uniquement si vous avez activé l'authentification sur vos Shelly. Sur les Gen2+, le nom d'utilisateur est toujours « admin » — laissez-le tel quel."
+        "fr": "Uniquement si vous avez activé l'authentification sur vos Shelly. Sur les Gen2+, le nom d'utilisateur est toujours « admin » — laissez-le tel quel.",
+        "de": "Nur wenn du die Authentifizierung an deinen Shelly-Geräten aktiviert hast. Bei Gen2+ ist der Benutzername immer „admin“ — lass ihn so.",
+        "es": "Solo si activó la autenticación en sus Shelly. En los Gen2+, el usuario es siempre «admin»: déjelo tal cual."
       },
       "required": false,
       "default": "admin"
@@ -82,11 +98,15 @@
       "type": "secret",
       "label": {
         "en": "Device password",
-        "fr": "Mot de passe des appareils"
+        "fr": "Mot de passe des appareils",
+        "de": "Passwort der Geräte",
+        "es": "Contraseña de los dispositivos"
       },
       "description": {
         "en": "Only if you enabled authentication on your Shelly devices. A single password is used for every device — set the same one on all of them, or leave this empty and disable authentication on your local network.",
-        "fr": "Uniquement si vous avez activé l'authentification sur vos Shelly. Un seul mot de passe est utilisé pour tous les appareils — définissez le même partout, ou laissez vide et désactivez l'authentification sur votre réseau local."
+        "fr": "Uniquement si vous avez activé l'authentification sur vos Shelly. Un seul mot de passe est utilisé pour tous les appareils — définissez le même partout, ou laissez vide et désactivez l'authentification sur votre réseau local.",
+        "de": "Nur wenn du die Authentifizierung an deinen Shelly-Geräten aktiviert hast. Ein einziges Passwort gilt für alle Geräte — setze überall dasselbe, oder lass das Feld leer und deaktiviere die Authentifizierung in deinem lokalen Netzwerk.",
+        "es": "Solo si activó la autenticación en sus Shelly. Se usa una única contraseña para todos los dispositivos: ponga la misma en todos, o deje esto vacío y desactive la autenticación en su red local."
       },
       "required": false
     },
@@ -95,18 +115,24 @@
       "type": "section",
       "label": {
         "en": "Shelly Cloud (fallback)",
-        "fr": "Shelly Cloud (secours)"
+        "fr": "Shelly Cloud (secours)",
+        "de": "Shelly Cloud (Ausweichlösung)",
+        "es": "Shelly Cloud (respaldo)"
       },
       "description": {
         "en": "Optional. When a device cannot be reached locally (away from home, another VLAN, Wi-Fi drop), Gladys can fall back to the Shelly Cloud. Get the authorization key and the server address in the Shelly app: Settings, then User settings, then Authorization cloud key. Leave this section empty for a local-only setup.",
-        "fr": "Optionnel. Quand un appareil n'est pas joignable localement (hors du domicile, autre VLAN, coupure Wi-Fi), Gladys peut basculer sur le Shelly Cloud. Récupérez la clé d'autorisation et l'adresse du serveur dans l'application Shelly : Réglages, puis Réglages utilisateur, puis Clé d'autorisation cloud. Laissez cette section vide pour une installation 100 % locale."
+        "fr": "Optionnel. Quand un appareil n'est pas joignable localement (hors du domicile, autre VLAN, coupure Wi-Fi), Gladys peut basculer sur le Shelly Cloud. Récupérez la clé d'autorisation et l'adresse du serveur dans l'application Shelly : Réglages, puis Réglages utilisateur, puis Clé d'autorisation cloud. Laissez cette section vide pour une installation 100 % locale.",
+        "de": "Optional. Wenn ein Gerät lokal nicht erreichbar ist (unterwegs, anderes VLAN, WLAN-Ausfall), kann Gladys auf die Shelly Cloud ausweichen. Den Autorisierungsschlüssel und die Serveradresse findest du in der Shelly-App: Einstellungen, dann Benutzereinstellungen, dann Autorisierungs-Cloud-Schlüssel. Lass diesen Abschnitt für eine rein lokale Installation leer.",
+        "es": "Opcional. Cuando un dispositivo no es accesible en local (fuera de casa, otra VLAN, corte de Wi-Fi), Gladys puede recurrir a la Shelly Cloud. Obtenga la clave de autorización y la dirección del servidor en la app Shelly: Ajustes, luego Ajustes de usuario, luego Clave de autorización de la nube. Deje esta sección vacía para una instalación 100 % local."
       },
       "links": [
         {
           "url": "https://control.shelly.cloud/",
           "label": {
             "en": "Shelly Cloud control panel",
-            "fr": "Panneau de contrôle Shelly Cloud"
+            "fr": "Panneau de contrôle Shelly Cloud",
+            "de": "Shelly-Cloud-Kontrollzentrum",
+            "es": "Panel de control de Shelly Cloud"
           }
         }
       ]
@@ -116,11 +142,15 @@
       "type": "boolean",
       "label": {
         "en": "Enable the Shelly Cloud fallback",
-        "fr": "Activer le secours par le Shelly Cloud"
+        "fr": "Activer le secours par le Shelly Cloud",
+        "de": "Shelly-Cloud-Ausweichlösung aktivieren",
+        "es": "Activar el respaldo por Shelly Cloud"
       },
       "description": {
         "en": "Use the Shelly Cloud when a device is unreachable on the local network. Requires the server address and the authorization key below.",
-        "fr": "Utiliser le Shelly Cloud quand un appareil est injoignable sur le réseau local. Nécessite l'adresse du serveur et la clé d'autorisation ci-dessous."
+        "fr": "Utiliser le Shelly Cloud quand un appareil est injoignable sur le réseau local. Nécessite l'adresse du serveur et la clé d'autorisation ci-dessous.",
+        "de": "Die Shelly Cloud verwenden, wenn ein Gerät im lokalen Netzwerk nicht erreichbar ist. Erfordert die Serveradresse und den Autorisierungsschlüssel unten.",
+        "es": "Usar la Shelly Cloud cuando un dispositivo no es accesible en la red local. Requiere la dirección del servidor y la clave de autorización de abajo."
       },
       "required": false,
       "default": false
@@ -130,15 +160,21 @@
       "type": "string",
       "label": {
         "en": "Shelly Cloud server",
-        "fr": "Serveur Shelly Cloud"
+        "fr": "Serveur Shelly Cloud",
+        "de": "Shelly-Cloud-Server",
+        "es": "Servidor de Shelly Cloud"
       },
       "description": {
         "en": "The server your account is hosted on, shown next to the authorization key in the Shelly app. Example: shelly-53-eu.shelly.cloud",
-        "fr": "Le serveur qui héberge votre compte, affiché à côté de la clé d'autorisation dans l'application Shelly. Exemple : shelly-53-eu.shelly.cloud"
+        "fr": "Le serveur qui héberge votre compte, affiché à côté de la clé d'autorisation dans l'application Shelly. Exemple : shelly-53-eu.shelly.cloud",
+        "de": "Der Server, auf dem dein Konto liegt, angezeigt neben dem Autorisierungsschlüssel in der Shelly-App. Beispiel: shelly-53-eu.shelly.cloud",
+        "es": "El servidor que aloja su cuenta, mostrado junto a la clave de autorización en la app Shelly. Ejemplo: shelly-53-eu.shelly.cloud"
       },
       "placeholder": {
         "en": "shelly-53-eu.shelly.cloud",
-        "fr": "shelly-53-eu.shelly.cloud"
+        "fr": "shelly-53-eu.shelly.cloud",
+        "de": "shelly-53-eu.shelly.cloud",
+        "es": "shelly-53-eu.shelly.cloud"
       },
       "required": false
     },
@@ -147,11 +183,15 @@
       "type": "secret",
       "label": {
         "en": "Shelly Cloud authorization key",
-        "fr": "Clé d'autorisation Shelly Cloud"
+        "fr": "Clé d'autorisation Shelly Cloud",
+        "de": "Shelly-Cloud-Autorisierungsschlüssel",
+        "es": "Clave de autorización de Shelly Cloud"
       },
       "description": {
         "en": "The authorization cloud key of your Shelly account. It grants full control over every device of the account — treat it like a password.",
-        "fr": "La clé d'autorisation cloud de votre compte Shelly. Elle donne le contrôle total sur tous les appareils du compte — traitez-la comme un mot de passe."
+        "fr": "La clé d'autorisation cloud de votre compte Shelly. Elle donne le contrôle total sur tous les appareils du compte — traitez-la comme un mot de passe.",
+        "de": "Der Autorisierungs-Cloud-Schlüssel deines Shelly-Kontos. Er gewährt die volle Kontrolle über alle Geräte des Kontos — behandle ihn wie ein Passwort.",
+        "es": "La clave de autorización de la nube de su cuenta Shelly. Da control total sobre todos los dispositivos de la cuenta: trátela como una contraseña."
       },
       "required": false
     },
@@ -160,18 +200,24 @@
       "type": "section",
       "label": {
         "en": "MQTT (recommended for large installations)",
-        "fr": "MQTT (recommandé pour les grandes installations)"
+        "fr": "MQTT (recommandé pour les grandes installations)",
+        "de": "MQTT (empfohlen für große Installationen)",
+        "es": "MQTT (recomendado para grandes instalaciones)"
       },
       "description": {
         "en": "Optional, and the most reliable way to reach a large fleet. Shelly devices announce themselves over mDNS in short multicast bursts that are easily missed, so on an installation with many devices some are simply never discovered. A device configured to publish to your MQTT broker announces itself continuously instead: it is discovered, it reports in real time, and it can still be controlled when it is unreachable on the local network. Configure the broker in each Shelly: Settings, then MQTT, then tick Enable, Enable MQTT Control and RPC status notifications over MQTT.",
-        "fr": "Optionnel, et le moyen le plus fiable de joindre une grande installation. Les Shelly s'annoncent en mDNS par courtes rafales multicast faciles à manquer : au-delà de quelques appareils, certains ne sont jamais découverts. Un appareil configuré pour publier sur votre broker MQTT s'annonce en permanence : il est découvert, il remonte en temps réel, et il reste pilotable même injoignable sur le réseau local. Configurez le broker dans chaque Shelly : Réglages, puis MQTT, puis cochez Enable, Enable MQTT Control et RPC status notifications over MQTT."
+        "fr": "Optionnel, et le moyen le plus fiable de joindre une grande installation. Les Shelly s'annoncent en mDNS par courtes rafales multicast faciles à manquer : au-delà de quelques appareils, certains ne sont jamais découverts. Un appareil configuré pour publier sur votre broker MQTT s'annonce en permanence : il est découvert, il remonte en temps réel, et il reste pilotable même injoignable sur le réseau local. Configurez le broker dans chaque Shelly : Réglages, puis MQTT, puis cochez Enable, Enable MQTT Control et RPC status notifications over MQTT.",
+        "de": "Optional, und der zuverlässigste Weg zu einer großen Installation. Shelly-Geräte melden sich per mDNS in kurzen Multicast-Schüben an, die leicht verpasst werden: Bei vielen Geräten werden manche nie gefunden. Ein Gerät, das an deinen MQTT-Broker publiziert, meldet sich dagegen ständig: Es wird gefunden, meldet in Echtzeit und bleibt steuerbar, auch wenn es im lokalen Netzwerk nicht erreichbar ist. Richte den Broker in jedem Shelly ein: Einstellungen, dann MQTT, dann Enable, Enable MQTT Control und RPC status notifications over MQTT ankreuzen.",
+        "es": "Opcional, y la forma más fiable de llegar a una instalación grande. Los Shelly se anuncian por mDNS en ráfagas multicast cortas, fáciles de perder: con muchos dispositivos, algunos nunca se descubren. Un dispositivo configurado para publicar en su broker MQTT se anuncia continuamente: se descubre, informa en tiempo real y sigue siendo controlable aunque no sea accesible en la red local. Configure el broker en cada Shelly: Ajustes, luego MQTT, luego marque Enable, Enable MQTT Control y RPC status notifications over MQTT."
       },
       "links": [
         {
           "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Mqtt",
           "label": {
             "en": "Shelly MQTT documentation",
-            "fr": "Documentation MQTT de Shelly"
+            "fr": "Documentation MQTT de Shelly",
+            "de": "Shelly-MQTT-Dokumentation",
+            "es": "Documentación MQTT de Shelly"
           }
         }
       ]
@@ -181,11 +227,15 @@
       "type": "boolean",
       "label": {
         "en": "Enable MQTT",
-        "fr": "Activer MQTT"
+        "fr": "Activer MQTT",
+        "de": "MQTT aktivieren",
+        "es": "Activar MQTT"
       },
       "description": {
         "en": "Listen to your MQTT broker to discover, read and control the Shelly devices that publish to it.",
-        "fr": "Écouter votre broker MQTT pour découvrir, lire et piloter les Shelly qui y publient."
+        "fr": "Écouter votre broker MQTT pour découvrir, lire et piloter les Shelly qui y publient.",
+        "de": "Deinen MQTT-Broker abhören, um die dort publizierenden Shelly-Geräte zu finden, zu lesen und zu steuern.",
+        "es": "Escuchar su broker MQTT para descubrir, leer y controlar los Shelly que publican en él."
       },
       "required": false,
       "default": false
@@ -195,15 +245,21 @@
       "type": "string",
       "label": {
         "en": "MQTT broker address",
-        "fr": "Adresse du broker MQTT"
+        "fr": "Adresse du broker MQTT",
+        "de": "Adresse des MQTT-Brokers",
+        "es": "Dirección del broker MQTT"
       },
       "description": {
         "en": "Host and port of your broker, exactly as entered in the Server field of your Shelly devices. The port defaults to 1883.",
-        "fr": "Hôte et port de votre broker, tels que saisis dans le champ Server de vos Shelly. Le port vaut 1883 par défaut."
+        "fr": "Hôte et port de votre broker, tels que saisis dans le champ Server de vos Shelly. Le port vaut 1883 par défaut.",
+        "de": "Host und Port deines Brokers, genau wie im Feld Server deiner Shelly-Geräte eingetragen. Standardport ist 1883.",
+        "es": "Host y puerto de su broker, tal como se introdujeron en el campo Server de sus Shelly. El puerto es 1883 por defecto."
       },
       "placeholder": {
         "en": "10.5.0.50:1883",
-        "fr": "10.5.0.50:1883"
+        "fr": "10.5.0.50:1883",
+        "de": "10.5.0.50:1883",
+        "es": "10.5.0.50:1883"
       },
       "required": false
     },
@@ -212,11 +268,15 @@
       "type": "string",
       "label": {
         "en": "MQTT username",
-        "fr": "Nom d'utilisateur MQTT"
+        "fr": "Nom d'utilisateur MQTT",
+        "de": "MQTT-Benutzername",
+        "es": "Usuario MQTT"
       },
       "description": {
         "en": "Only if your broker requires authentication. Use the same credentials you set in your Shelly devices.",
-        "fr": "Uniquement si votre broker exige une authentification. Utilisez les mêmes identifiants que dans vos Shelly."
+        "fr": "Uniquement si votre broker exige une authentification. Utilisez les mêmes identifiants que dans vos Shelly.",
+        "de": "Nur wenn dein Broker eine Authentifizierung verlangt. Verwende dieselben Zugangsdaten wie in deinen Shelly-Geräten.",
+        "es": "Solo si su broker exige autenticación. Use las mismas credenciales que en sus Shelly."
       },
       "required": false
     },
@@ -225,11 +285,15 @@
       "type": "secret",
       "label": {
         "en": "MQTT password",
-        "fr": "Mot de passe MQTT"
+        "fr": "Mot de passe MQTT",
+        "de": "MQTT-Passwort",
+        "es": "Contraseña MQTT"
       },
       "description": {
         "en": "Only if your broker requires authentication.",
-        "fr": "Uniquement si votre broker exige une authentification."
+        "fr": "Uniquement si votre broker exige une authentification.",
+        "de": "Nur wenn dein Broker eine Authentifizierung verlangt.",
+        "es": "Solo si su broker exige autenticación."
       },
       "required": false
     },
@@ -238,23 +302,87 @@
       "type": "section",
       "label": {
         "en": "Advanced",
-        "fr": "Avancé"
+        "fr": "Avancé",
+        "de": "Erweitert",
+        "es": "Avanzado"
       },
       "description": {
         "en": "Sensible defaults are already set — change these only if you know why. A shorter refresh interval means fresher values but more requests on your network and against the Gladys state rate limit.",
-        "fr": "Les valeurs par défaut conviennent à la plupart des installations — ne les changez qu'en connaissance de cause. Un intervalle plus court donne des valeurs plus fraîches mais génère plus de requêtes sur votre réseau et vis-à-vis de la limite de débit des états Gladys."
+        "fr": "Les valeurs par défaut conviennent à la plupart des installations — ne les changez qu'en connaissance de cause. Un intervalle plus court donne des valeurs plus fraîches mais génère plus de requêtes sur votre réseau et vis-à-vis de la limite de débit des états Gladys.",
+        "de": "Sinnvolle Standardwerte sind bereits gesetzt — ändere sie nur, wenn du weißt, warum. Ein kürzeres Intervall liefert frischere Werte, aber mehr Anfragen in deinem Netzwerk und gegenüber dem Zustandslimit von Gladys.",
+        "es": "Los valores por defecto sirven para la mayoría de las instalaciones: cámbielos solo sabiendo por qué. Un intervalo más corto da valores más frescos pero genera más peticiones en su red y frente al límite de estados de Gladys."
       }
+    },
+    {
+      "key": "feature_names",
+      "type": "select",
+      "label": {
+        "en": "Feature names",
+        "fr": "Noms des fonctionnalités",
+        "de": "Namen der Funktionen",
+        "es": "Nombres de las funcionalidades"
+      },
+      "description": {
+        "en": "Language of the feature names given to newly discovered devices. A device already created keeps its names: rename its features in Gladys if needed.",
+        "fr": "Langue des noms de fonctionnalités donnés aux appareils nouvellement découverts. Un appareil déjà créé garde ses noms : renommez ses fonctionnalités dans Gladys si besoin.",
+        "de": "Sprache der Funktionsnamen neu erkannter Geräte. Ein bereits angelegtes Gerät behält seine Namen: Benenne seine Funktionen bei Bedarf in Gladys um.",
+        "es": "Idioma de los nombres de funcionalidades de los dispositivos recién descubiertos. Un dispositivo ya creado conserva sus nombres: cambie el nombre de sus funcionalidades en Gladys si es necesario."
+      },
+      "required": false,
+      "default": "en",
+      "options": [
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais",
+            "de": "Englisch",
+            "es": "Inglés"
+          }
+        },
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français",
+            "de": "Französisch",
+            "es": "Francés"
+          }
+        },
+        {
+          "value": "de",
+          "label": {
+            "en": "German",
+            "fr": "Allemand",
+            "de": "Deutsch",
+            "es": "Alemán"
+          }
+        },
+        {
+          "value": "es",
+          "label": {
+            "en": "Spanish",
+            "fr": "Espagnol",
+            "de": "Spanisch",
+            "es": "Español"
+          }
+        }
+      ]
     },
     {
       "key": "refresh_interval",
       "type": "select",
       "label": {
         "en": "Refresh interval",
-        "fr": "Intervalle de rafraîchissement"
+        "fr": "Intervalle de rafraîchissement",
+        "de": "Aktualisierungsintervall",
+        "es": "Intervalo de actualización"
       },
       "description": {
         "en": "How often Gladys reads the state of every device.",
-        "fr": "Fréquence à laquelle Gladys lit l'état de chaque appareil."
+        "fr": "Fréquence à laquelle Gladys lit l'état de chaque appareil.",
+        "de": "Wie oft Gladys den Zustand jedes Geräts liest.",
+        "es": "Frecuencia con la que Gladys lee el estado de cada dispositivo."
       },
       "required": false,
       "default": "30",
@@ -263,28 +391,36 @@
           "value": "10",
           "label": {
             "en": "10 seconds",
-            "fr": "10 secondes"
+            "fr": "10 secondes",
+            "de": "10 Sekunden",
+            "es": "10 segundos"
           }
         },
         {
           "value": "30",
           "label": {
             "en": "30 seconds",
-            "fr": "30 secondes"
+            "fr": "30 secondes",
+            "de": "30 Sekunden",
+            "es": "30 segundos"
           }
         },
         {
           "value": "60",
           "label": {
             "en": "1 minute",
-            "fr": "1 minute"
+            "fr": "1 minute",
+            "de": "1 Minute",
+            "es": "1 minuto"
           }
         },
         {
           "value": "300",
           "label": {
             "en": "5 minutes",
-            "fr": "5 minutes"
+            "fr": "5 minutes",
+            "de": "5 Minuten",
+            "es": "5 minutos"
           }
         }
       ]
@@ -294,11 +430,15 @@
       "type": "select",
       "label": {
         "en": "Real-time interval (power and on/off)",
-        "fr": "Intervalle temps réel (puissance et marche/arrêt)"
+        "fr": "Intervalle temps réel (puissance et marche/arrêt)",
+        "de": "Echtzeit-Intervall (Leistung und Ein/Aus)",
+        "es": "Intervalo en tiempo real (potencia y encendido/apagado)"
       },
       "description": {
-        "en": "How fast the values a scene reacts to are published: every instantaneous power (total, per phase, per relay) and every on/off state. Everything else (voltages, currents, energy counters, temperatures) follows the refresh interval above. This is a floor, not a promise: Gladys accepts 300 states per minute in total, so on a large fleet the integration slows this lane down on its own and says so in the logs, then returns here as soon as the budget allows.",
-        "fr": "Vitesse de publication des valeurs auxquelles une scène réagit : toutes les puissances instantanées (totale, par phase, par relais) et tous les états marche/arrêt. Tout le reste (tensions, intensités, compteurs d'énergie, températures) suit l'intervalle de rafraîchissement ci-dessus. C'est un plancher, pas une promesse : Gladys accepte 300 états par minute au total, donc sur un grand parc l'intégration ralentit cette voie d'elle-même en l'indiquant dans les logs, puis y revient dès que le budget le permet."
+        "en": "How fast the values a scene reacts to are published: every instantaneous power (total, per phase, per relay), every on/off state, shutter and light state. Everything else (voltages, currents, energy counters, temperatures) follows the refresh interval above. This is a floor, not a promise: Gladys accepts 300 states per minute in total, so on a large fleet the integration slows this lane down on its own and says so in the logs, then returns here as soon as the budget allows.",
+        "fr": "Vitesse de publication des valeurs auxquelles une scène réagit : toutes les puissances instantanées (totale, par phase, par relais), tous les états marche/arrêt, l'état des volets et des lumières. Tout le reste (tensions, intensités, compteurs d'énergie, températures) suit l'intervalle de rafraîchissement ci-dessus. C'est un plancher, pas une promesse : Gladys accepte 300 états par minute au total, donc sur un grand parc l'intégration ralentit cette voie d'elle-même en l'indiquant dans les logs, puis y revient dès que le budget le permet.",
+        "de": "Wie schnell die Werte publiziert werden, auf die eine Szene reagiert: jede Momentanleistung (gesamt, pro Phase, pro Relais), jeder Ein/Aus-Zustand, Rollladen- und Lichtzustand. Alles andere (Spannungen, Ströme, Energiezähler, Temperaturen) folgt dem Aktualisierungsintervall oben. Das ist eine Untergrenze, kein Versprechen: Gladys nimmt insgesamt 300 Zustände pro Minute an, daher verlangsamt die Integration diesen Kanal bei großen Installationen selbst, meldet das in den Logs und kehrt zurück, sobald das Budget es erlaubt.",
+        "es": "Rapidez de publicación de los valores a los que reacciona una escena: toda potencia instantánea (total, por fase, por relé), todo estado de encendido/apagado, estado de persianas y luces. Todo lo demás (tensiones, corrientes, contadores de energía, temperaturas) sigue el intervalo de actualización de arriba. Es un mínimo, no una promesa: Gladys acepta 300 estados por minuto en total, así que en una instalación grande la integración ralentiza este canal por sí misma, lo indica en los logs y vuelve aquí en cuanto el presupuesto lo permite."
       },
       "required": false,
       "default": "5",
@@ -307,38 +447,790 @@
           "value": "1",
           "label": {
             "en": "1 second",
-            "fr": "1 seconde"
+            "fr": "1 seconde",
+            "de": "1 Sekunde",
+            "es": "1 segundo"
           }
         },
         {
           "value": "5",
           "label": {
             "en": "5 seconds",
-            "fr": "5 secondes"
+            "fr": "5 secondes",
+            "de": "5 Sekunden",
+            "es": "5 segundos"
           }
         },
         {
           "value": "10",
           "label": {
             "en": "10 seconds",
-            "fr": "10 secondes"
+            "fr": "10 secondes",
+            "de": "10 Sekunden",
+            "es": "10 segundos"
           }
         },
         {
           "value": "30",
           "label": {
             "en": "30 seconds",
-            "fr": "30 secondes"
+            "fr": "30 secondes",
+            "de": "30 Sekunden",
+            "es": "30 segundos"
           }
         },
         {
           "value": "0",
           "label": {
             "en": "Disabled",
-            "fr": "Désactivé"
+            "fr": "Désactivé",
+            "de": "Deaktiviert",
+            "es": "Desactivado"
           }
         }
       ]
+    }
+  ],
+  "actions": [
+    {
+      "key": "fleet_diagnostic",
+      "label": {
+        "en": "Diagnostic of the devices",
+        "fr": "Diagnostic des appareils",
+        "de": "Diagnose der Geräte",
+        "es": "Diagnóstico de los dispositivos"
+      },
+      "description": {
+        "en": "A text report of the whole installation: configuration (without any password), real-time channels and Gladys state budget, then each device (transport, last data, Wi-Fi signal, firmware update, outputs). Copy it into a GitHub issue. Read-only.",
+        "fr": "Un rapport texte de toute l'installation : configuration (sans aucun mot de passe), canaux temps réel et budget d'états Gladys, puis chaque appareil (transport, dernières données, signal Wi-Fi, mise à jour firmware, sorties). Copiez-le dans une issue GitHub. Lecture seule.",
+        "de": "Ein Textbericht der gesamten Installation: Konfiguration (ohne Passwörter), Echtzeitkanäle und Gladys-Zustandsbudget, dann jedes Gerät (Transport, letzte Daten, WLAN-Signal, Firmware-Update, Ausgänge). Kopiere ihn in ein GitHub-Issue. Nur lesend.",
+        "es": "Un informe de texto de toda la instalación: configuración (sin ninguna contraseña), canales en tiempo real y presupuesto de estados de Gladys, y luego cada dispositivo (transporte, últimos datos, señal Wi-Fi, actualización de firmware, salidas). Cópielo en una issue de GitHub. Solo lectura."
+      },
+      "timeout_seconds": 30,
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "required": false,
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          },
+          "description": {
+            "en": "Pick a device to diagnose it alone, or leave empty for every device.",
+            "fr": "Choisissez un appareil pour le diagnostiquer seul, ou laissez vide pour tous les appareils.",
+            "de": "Wähle ein Gerät, um nur dieses zu diagnostizieren, oder lass das Feld leer für alle Geräte.",
+            "es": "Elija un dispositivo para diagnosticarlo solo, o deje vacío para todos los dispositivos."
+          }
+        },
+        {
+          "key": "include_identifiers",
+          "type": "boolean",
+          "default": false,
+          "label": {
+            "en": "Show device ids and local addresses",
+            "fr": "Afficher les identifiants et adresses locales",
+            "de": "Geräte-IDs und lokale Adressen anzeigen",
+            "es": "Mostrar los identificadores y direcciones locales"
+          },
+          "description": {
+            "en": "Off: the MAC part of the device ids is shortened and local IP addresses hidden, so the report can be posted publicly. On: shown in full, keep the report private.",
+            "fr": "Désactivé : la partie MAC des identifiants est raccourcie et les adresses IP locales masquées, le rapport peut être publié. Activé : affichés en entier, gardez le rapport privé.",
+            "de": "Aus: Der MAC-Teil der Geräte-IDs wird gekürzt und lokale IP-Adressen verborgen, der Bericht kann öffentlich gepostet werden. An: vollständig angezeigt, Bericht privat halten.",
+            "es": "Desactivado: la parte MAC de los identificadores se acorta y las direcciones IP locales se ocultan, el informe puede publicarse. Activado: se muestran completos, mantenga el informe privado."
+          }
+        }
+      ]
+    },
+    {
+      "key": "test_device",
+      "label": {
+        "en": "Test a device",
+        "fr": "Tester un appareil",
+        "de": "Ein Gerät testen",
+        "es": "Probar un dispositivo"
+      },
+      "description": {
+        "en": "Reads a device once, now, at the address the integration uses: identity, answer times, password accepted or not, components, Wi-Fi signal, and whether it pushes in real time — or the precise error with a hint. Works for a device not created in Gladys too. Never writes to the device.",
+        "fr": "Lit une fois, tout de suite, un appareil à l'adresse utilisée par l'intégration : identité, temps de réponse, mot de passe accepté ou non, composants, signal Wi-Fi, et s'il remonte en temps réel — ou l'erreur précise avec une piste. Fonctionne aussi pour un appareil non créé dans Gladys. N'écrit jamais dans l'appareil.",
+        "de": "Liest ein Gerät einmal, sofort, an der Adresse, die die Integration verwendet: Identität, Antwortzeiten, Passwort akzeptiert oder nicht, Komponenten, WLAN-Signal und ob es in Echtzeit meldet — oder der genaue Fehler mit einem Hinweis. Funktioniert auch für ein nicht in Gladys angelegtes Gerät. Schreibt nie in das Gerät.",
+        "es": "Lee una vez, ahora, un dispositivo en la dirección que usa la integración: identidad, tiempos de respuesta, contraseña aceptada o no, componentes, señal Wi-Fi y si informa en tiempo real — o el error preciso con una pista. Funciona también para un dispositivo no creado en Gladys. Nunca escribe en el dispositivo."
+      },
+      "timeout_seconds": 30,
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "required": false,
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          },
+          "description": {
+            "en": "Pick the device in the list of devices created in Gladys.",
+            "fr": "Choisissez l'appareil dans la liste des appareils créés dans Gladys.",
+            "de": "Wähle das Gerät aus der Liste der in Gladys angelegten Geräte.",
+            "es": "Elija el dispositivo en la lista de dispositivos creados en Gladys."
+          }
+        },
+        {
+          "key": "device_ref",
+          "type": "string",
+          "required": false,
+          "label": {
+            "en": "…or a device not created in Gladys (IP address, Shelly id or name)",
+            "fr": "…ou un appareil non créé dans Gladys (adresse IP, identifiant Shelly ou nom)",
+            "de": "…oder ein nicht in Gladys angelegtes Gerät (IP-Adresse, Shelly-ID oder Name)",
+            "es": "…o un dispositivo no creado en Gladys (dirección IP, identificador Shelly o nombre)"
+          },
+          "description": {
+            "en": "Only when the device is not in the list above, for example one the scan does not find: type its IP address.",
+            "fr": "Seulement si l'appareil n'est pas dans la liste ci-dessus, par exemple un appareil que le scan ne trouve pas : saisissez son adresse IP.",
+            "de": "Nur wenn das Gerät nicht in der Liste oben steht, zum Beispiel eines, das der Scan nicht findet: Gib seine IP-Adresse ein.",
+            "es": "Solo si el dispositivo no está en la lista de arriba, por ejemplo uno que el escaneo no encuentra: escriba su dirección IP."
+          }
+        },
+        {
+          "key": "include_identifiers",
+          "type": "boolean",
+          "default": false,
+          "label": {
+            "en": "Show device ids and local addresses",
+            "fr": "Afficher les identifiants et adresses locales",
+            "de": "Geräte-IDs und lokale Adressen anzeigen",
+            "es": "Mostrar los identificadores y direcciones locales"
+          },
+          "description": {
+            "en": "Off: the MAC part of the device ids is shortened and local IP addresses hidden, so the report can be posted publicly. On: shown in full, keep the report private.",
+            "fr": "Désactivé : la partie MAC des identifiants est raccourcie et les adresses IP locales masquées, le rapport peut être publié. Activé : affichés en entier, gardez le rapport privé.",
+            "de": "Aus: Der MAC-Teil der Geräte-IDs wird gekürzt und lokale IP-Adressen verborgen, der Bericht kann öffentlich gepostet werden. An: vollständig angezeigt, Bericht privat halten.",
+            "es": "Desactivado: la parte MAC de los identificadores se acorta y las direcciones IP locales se ocultan, el informe puede publicarse. Activado: se muestran completos, mantenga el informe privado."
+          }
+        }
+      ]
+    }
+  ],
+  "scene_triggers": [
+    {
+      "key": "input_event",
+      "label": {
+        "en": "Button pressed on a Shelly",
+        "fr": "Bouton appuyé sur un Shelly",
+        "de": "Taster an einem Shelly gedrückt",
+        "es": "Botón pulsado en un Shelly"
+      },
+      "description": {
+        "en": "An input in button mode was pressed: single, double, triple or long press (Gen2+, real time).",
+        "fr": "Une entrée en mode bouton a été appuyée : simple, double, triple ou long appui (Gen2+, temps réel).",
+        "de": "Ein Eingang im Tastermodus wurde gedrückt: einfach, doppelt, dreifach oder lang (Gen2+, Echtzeit).",
+        "es": "Se pulsó una entrada en modo botón: simple, doble, triple o larga (Gen2+, tiempo real)."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          }
+        },
+        {
+          "key": "input",
+          "type": "select",
+          "label": {
+            "en": "Input",
+            "fr": "Entrée",
+            "de": "Eingang",
+            "es": "Entrada"
+          },
+          "options": [
+            {
+              "value": "0",
+              "label": {
+                "en": "Input 0",
+                "fr": "Entrée 0",
+                "de": "Eingang 0",
+                "es": "Entrada 0"
+              }
+            },
+            {
+              "value": "1",
+              "label": {
+                "en": "Input 1",
+                "fr": "Entrée 1",
+                "de": "Eingang 1",
+                "es": "Entrada 1"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "en": "Input 2",
+                "fr": "Entrée 2",
+                "de": "Eingang 2",
+                "es": "Entrada 2"
+              }
+            },
+            {
+              "value": "3",
+              "label": {
+                "en": "Input 3",
+                "fr": "Entrée 3",
+                "de": "Eingang 3",
+                "es": "Entrada 3"
+              }
+            }
+          ]
+        },
+        {
+          "key": "event",
+          "type": "multi_select",
+          "label": {
+            "en": "Press",
+            "fr": "Appui",
+            "de": "Druck",
+            "es": "Pulsación"
+          },
+          "options": [
+            {
+              "value": "single_push",
+              "label": {
+                "en": "Single press",
+                "fr": "Appui simple",
+                "de": "Einfacher Druck",
+                "es": "Pulsación simple"
+              }
+            },
+            {
+              "value": "double_push",
+              "label": {
+                "en": "Double press",
+                "fr": "Double appui",
+                "de": "Doppelter Druck",
+                "es": "Doble pulsación"
+              }
+            },
+            {
+              "value": "triple_push",
+              "label": {
+                "en": "Triple press",
+                "fr": "Triple appui",
+                "de": "Dreifacher Druck",
+                "es": "Triple pulsación"
+              }
+            },
+            {
+              "value": "long_push",
+              "label": {
+                "en": "Long press",
+                "fr": "Appui long",
+                "de": "Langer Druck",
+                "es": "Pulsación larga"
+              }
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "key": "device_name",
+          "type": "string",
+          "label": {
+            "en": "Device name",
+            "fr": "Nom de l'appareil",
+            "de": "Name des Geräts",
+            "es": "Nombre del dispositivo"
+          }
+        },
+        {
+          "key": "input",
+          "type": "string",
+          "label": {
+            "en": "Input",
+            "fr": "Entrée",
+            "de": "Eingang",
+            "es": "Entrada"
+          }
+        },
+        {
+          "key": "event",
+          "type": "string",
+          "label": {
+            "en": "Press",
+            "fr": "Appui",
+            "de": "Druck",
+            "es": "Pulsación"
+          },
+          "description": {
+            "en": "single_push, double_push, triple_push or long_push.",
+            "fr": "single_push, double_push, triple_push ou long_push.",
+            "de": "single_push, double_push, triple_push oder long_push.",
+            "es": "single_push, double_push, triple_push o long_push."
+          }
+        }
+      ]
+    },
+    {
+      "key": "device_reachability_changed",
+      "label": {
+        "en": "Shelly reachability changed",
+        "fr": "Joignabilité d'un Shelly",
+        "de": "Erreichbarkeit eines Shelly",
+        "es": "Accesibilidad de un Shelly"
+      },
+      "description": {
+        "en": "A device became unreachable on every transport, or answers again.",
+        "fr": "Un appareil est devenu injoignable sur tous les transports, ou répond à nouveau.",
+        "de": "Ein Gerät ist über alle Transporte nicht mehr erreichbar oder antwortet wieder.",
+        "es": "Un dispositivo dejó de ser accesible por todos los transportes, o responde de nuevo."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          }
+        },
+        {
+          "key": "state",
+          "type": "select",
+          "label": {
+            "en": "New state",
+            "fr": "Nouvel état",
+            "de": "Neuer Zustand",
+            "es": "Nuevo estado"
+          },
+          "options": [
+            {
+              "value": "unreachable",
+              "label": {
+                "en": "Unreachable",
+                "fr": "Injoignable",
+                "de": "Nicht erreichbar",
+                "es": "Inaccesible"
+              }
+            },
+            {
+              "value": "reachable",
+              "label": {
+                "en": "Reachable again",
+                "fr": "De nouveau joignable",
+                "de": "Wieder erreichbar",
+                "es": "Accesible de nuevo"
+              }
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "key": "device_name",
+          "type": "string",
+          "label": {
+            "en": "Device name",
+            "fr": "Nom de l'appareil",
+            "de": "Name des Geräts",
+            "es": "Nombre del dispositivo"
+          }
+        },
+        {
+          "key": "state",
+          "type": "string",
+          "label": {
+            "en": "New state",
+            "fr": "Nouvel état",
+            "de": "Neuer Zustand",
+            "es": "Nuevo estado"
+          }
+        },
+        {
+          "key": "transport",
+          "type": "string",
+          "label": {
+            "en": "Transport",
+            "fr": "Transport",
+            "de": "Transport",
+            "es": "Transporte"
+          },
+          "description": {
+            "en": "local, cloud or unreachable.",
+            "fr": "local, cloud ou unreachable.",
+            "de": "local, cloud oder unreachable.",
+            "es": "local, cloud o unreachable."
+          }
+        }
+      ]
+    }
+  ],
+  "scene_actions": [
+    {
+      "key": "turn_on_for",
+      "label": {
+        "en": "Turn on for a duration",
+        "fr": "Allumer pendant une durée",
+        "de": "Für eine Dauer einschalten",
+        "es": "Encender durante un tiempo"
+      },
+      "description": {
+        "en": "Switches a relay or a light on; the Shelly itself switches it off after the duration, even if Gladys restarts in between.",
+        "fr": "Allume un relais ou une lumière ; le Shelly l'éteint lui-même après la durée, même si Gladys redémarre entre-temps.",
+        "de": "Schaltet ein Relais oder ein Licht ein; der Shelly schaltet es nach der Dauer selbst aus, auch wenn Gladys zwischendurch neu startet.",
+        "es": "Enciende un relé o una luz; el propio Shelly lo apaga tras la duración, aunque Gladys se reinicie mientras tanto."
+      },
+      "timeout_seconds": 15,
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          },
+          "required": true
+        },
+        {
+          "key": "channel",
+          "type": "number",
+          "label": {
+            "en": "Output number",
+            "fr": "Numéro de sortie",
+            "de": "Ausgangsnummer",
+            "es": "Número de salida"
+          },
+          "description": {
+            "en": "0 for the first relay or light, 1 for the second… (the number in brackets in the feature name).",
+            "fr": "0 pour le premier relais ou la première lumière, 1 pour le deuxième… (le numéro entre parenthèses dans le nom de la fonctionnalité).",
+            "de": "0 für das erste Relais oder Licht, 1 für das zweite… (die Zahl in Klammern im Funktionsnamen).",
+            "es": "0 para el primer relé o luz, 1 para el segundo… (el número entre paréntesis en el nombre de la funcionalidad)."
+          },
+          "default": 0,
+          "min": 0,
+          "max": 15
+        },
+        {
+          "key": "duration",
+          "type": "number",
+          "label": {
+            "en": "Duration (seconds)",
+            "fr": "Durée (secondes)",
+            "de": "Dauer (Sekunden)",
+            "es": "Duración (segundos)"
+          },
+          "description": {
+            "en": "From 1 second to 1 day (86400).",
+            "fr": "De 1 seconde à 1 jour (86400).",
+            "de": "Von 1 Sekunde bis 1 Tag (86400).",
+            "es": "De 1 segundo a 1 día (86400)."
+          },
+          "required": true,
+          "min": 1,
+          "max": 86400
+        }
+      ],
+      "outputs": [
+        {
+          "key": "transport",
+          "type": "string",
+          "label": {
+            "en": "Transport used",
+            "fr": "Transport utilisé",
+            "de": "Verwendeter Transport",
+            "es": "Transporte usado"
+          },
+          "description": {
+            "en": "local or cloud.",
+            "fr": "local ou cloud.",
+            "de": "local oder cloud.",
+            "es": "local o cloud."
+          }
+        }
+      ]
+    },
+    {
+      "key": "reboot",
+      "label": {
+        "en": "Restart a Shelly",
+        "fr": "Redémarrer un Shelly",
+        "de": "Einen Shelly neu starten",
+        "es": "Reiniciar un Shelly"
+      },
+      "description": {
+        "en": "Restarts the device. Its outputs follow the power-on setting of the device during the restart.",
+        "fr": "Redémarre l'appareil. Ses sorties suivent le réglage de mise sous tension de l'appareil pendant le redémarrage.",
+        "de": "Startet das Gerät neu. Seine Ausgänge folgen während des Neustarts der Einschalteinstellung des Geräts.",
+        "es": "Reinicia el dispositivo. Sus salidas siguen el ajuste de encendido del dispositivo durante el reinicio."
+      },
+      "timeout_seconds": 15,
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          },
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "key": "transport",
+          "type": "string",
+          "label": {
+            "en": "Transport used",
+            "fr": "Transport utilisé",
+            "de": "Verwendeter Transport",
+            "es": "Transporte usado"
+          },
+          "description": {
+            "en": "local or cloud.",
+            "fr": "local ou cloud.",
+            "de": "local oder cloud.",
+            "es": "local o cloud."
+          }
+        }
+      ]
+    }
+  ],
+  "widgets": [
+    {
+      "key": "energy_meter",
+      "label": {
+        "en": "Shelly energy meter",
+        "fr": "Compteur d'énergie Shelly",
+        "de": "Shelly-Energiezähler",
+        "es": "Medidor de energía Shelly"
+      },
+      "description": {
+        "en": "Live power, phases, energy counters and power chart of a metering Shelly.",
+        "fr": "Puissance en direct, phases, compteurs d'énergie et courbe d'un Shelly avec mesure.",
+        "de": "Live-Leistung, Phasen, Energiezähler und Leistungskurve eines messenden Shelly.",
+        "es": "Potencia en directo, fases, contadores de energía y gráfica de un Shelly con medición."
+      },
+      "icon": "activity",
+      "settings": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          },
+          "required": true
+        },
+        {
+          "key": "interval",
+          "type": "select",
+          "label": {
+            "en": "Chart period",
+            "fr": "Période de la courbe",
+            "de": "Zeitraum der Kurve",
+            "es": "Periodo de la gráfica"
+          },
+          "default": "last-day",
+          "options": [
+            {
+              "value": "last-hour",
+              "label": {
+                "en": "Last hour",
+                "fr": "Dernière heure",
+                "de": "Letzte Stunde",
+                "es": "Última hora"
+              }
+            },
+            {
+              "value": "last-twelve-hours",
+              "label": {
+                "en": "Last 12 hours",
+                "fr": "12 dernières heures",
+                "de": "Letzte 12 Stunden",
+                "es": "Últimas 12 horas"
+              }
+            },
+            {
+              "value": "last-day",
+              "label": {
+                "en": "Last 24 hours",
+                "fr": "24 dernières heures",
+                "de": "Letzte 24 Stunden",
+                "es": "Últimas 24 horas"
+              }
+            },
+            {
+              "value": "last-week",
+              "label": {
+                "en": "Last week",
+                "fr": "Dernière semaine",
+                "de": "Letzte Woche",
+                "es": "Última semana"
+              }
+            }
+          ]
+        },
+        {
+          "key": "max_power",
+          "type": "number",
+          "label": {
+            "en": "Gauge maximum (W)",
+            "fr": "Maximum de la jauge (W)",
+            "de": "Maximum der Anzeige (W)",
+            "es": "Máximo del indicador (W)"
+          },
+          "description": {
+            "en": "Your subscribed power, 6000 W by default. A meter that sees returned energy gets the same range below zero.",
+            "fr": "Votre puissance souscrite, 6000 W par défaut. Un compteur qui voit de l'énergie réinjectée a la même plage sous zéro.",
+            "de": "Deine Anschlussleistung, standardmäßig 6000 W. Ein Zähler mit Einspeisung erhält denselben Bereich unter null.",
+            "es": "Su potencia contratada, 6000 W por defecto. Un medidor que ve energía devuelta tiene el mismo rango bajo cero."
+          },
+          "default": 6000,
+          "min": 100,
+          "max": 100000
+        }
+      ]
+    },
+    {
+      "key": "switches",
+      "label": {
+        "en": "Shelly switches",
+        "fr": "Interrupteurs Shelly",
+        "de": "Shelly-Schalter",
+        "es": "Interruptores Shelly"
+      },
+      "description": {
+        "en": "Relays and lights: state and power of each output, All on / All off buttons.",
+        "fr": "Relais et lumières : état et puissance de chaque sortie, Tout allumer / Tout éteindre.",
+        "de": "Relais und Lichter: Zustand und Leistung je Ausgang, Alle an / Alle aus.",
+        "es": "Relés y luces: estado y potencia de cada salida, Encender todo / Apagar todo."
+      },
+      "icon": "toggle-right",
+      "settings": [
+        {
+          "key": "devices",
+          "type": "multi_select",
+          "source": "devices",
+          "label": {
+            "en": "Devices",
+            "fr": "Appareils",
+            "de": "Geräte",
+            "es": "Dispositivos"
+          },
+          "description": {
+            "en": "Leave empty for every device.",
+            "fr": "Laissez vide pour tous les appareils.",
+            "de": "Leer lassen für alle Geräte.",
+            "es": "Deje vacío para todos los dispositivos."
+          }
+        },
+        {
+          "key": "title",
+          "type": "string",
+          "label": {
+            "en": "Title",
+            "fr": "Titre",
+            "de": "Titel",
+            "es": "Título"
+          },
+          "description": {
+            "en": "Optional, shown at the top of the card.",
+            "fr": "Optionnel, affiché en haut de la carte.",
+            "de": "Optional, oben auf der Karte angezeigt.",
+            "es": "Opcional, mostrado en la parte superior de la tarjeta."
+          }
+        }
+      ],
+      "action_timeout_seconds": 60
+    },
+    {
+      "key": "shutters",
+      "label": {
+        "en": "Shelly shutters",
+        "fr": "Volets Shelly",
+        "de": "Shelly-Rollläden",
+        "es": "Persianas Shelly"
+      },
+      "description": {
+        "en": "A group of shutters: state and position, Open, Stop, Close and Position buttons.",
+        "fr": "Un groupe de volets : état et position, boutons Ouvrir, Stop, Fermer et Position.",
+        "de": "Eine Rollladengruppe: Zustand und Position, Öffnen, Stopp, Schließen, Position.",
+        "es": "Un grupo de persianas: estado y posición, botones Abrir, Parar, Cerrar y Posición."
+      },
+      "icon": "sliders",
+      "settings": [
+        {
+          "key": "devices",
+          "type": "multi_select",
+          "source": "devices",
+          "label": {
+            "en": "Devices",
+            "fr": "Appareils",
+            "de": "Geräte",
+            "es": "Dispositivos"
+          },
+          "description": {
+            "en": "Leave empty for every device.",
+            "fr": "Laissez vide pour tous les appareils.",
+            "de": "Leer lassen für alle Geräte.",
+            "es": "Deje vacío para todos los dispositivos."
+          }
+        },
+        {
+          "key": "title",
+          "type": "string",
+          "label": {
+            "en": "Title",
+            "fr": "Titre",
+            "de": "Titel",
+            "es": "Título"
+          },
+          "description": {
+            "en": "Optional, shown at the top of the card.",
+            "fr": "Optionnel, affiché en haut de la carte.",
+            "de": "Optional, oben auf der Karte angezeigt.",
+            "es": "Opcional, mostrado en la parte superior de la tarjeta."
+          }
+        }
+      ],
+      "action_timeout_seconds": 60
+    },
+    {
+      "key": "network",
+      "label": {
+        "en": "Shelly network health",
+        "fr": "Santé du réseau Shelly",
+        "de": "Zustand des Shelly-Netzwerks",
+        "es": "Estado de la red Shelly"
+      },
+      "description": {
+        "en": "Real-time, fallback and unreachable devices, weak Wi-Fi, updates, Gladys budget.",
+        "fr": "Appareils en temps réel, en secours, injoignables, Wi-Fi faible, mises à jour, budget.",
+        "de": "Geräte in Echtzeit, im Ausweich, unerreichbar, schwaches WLAN, Updates, Budget.",
+        "es": "Dispositivos en tiempo real, en respaldo, inaccesibles, Wi-Fi débil, actualizaciones."
+      },
+      "icon": "wifi",
+      "settings": []
     }
   ]
 }

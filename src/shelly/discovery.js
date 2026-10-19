@@ -223,6 +223,7 @@ async function probeGen1Host({ gladys, config, host, info, fetchImpl }) {
       config: normalizeGen1Settings(settings),
       host,
       externalIds: gladys.externalIds(DEVICE_TYPE, identity.id),
+      language: config?.featureNames,
     }),
   };
 }
@@ -300,6 +301,7 @@ export async function probeHost({ gladys, client, config, host, fetchImpl = fetc
       config: deviceConfig,
       host,
       externalIds: gladys.externalIds(DEVICE_TYPE, info.id),
+      language: config?.featureNames,
     }),
   };
 }
@@ -342,9 +344,10 @@ export function forgetSeenHosts() {
  * @param {object} params.gladys the SDK instance
  * @param {object} params.mqttHub the MQTT hub
  * @param {Map<string, object>} params.found devices already found, keyed by external id
+ * @param {string} [params.language] language of the feature names
  * @returns {Promise<number>} how many devices MQTT added
  */
-async function probeMqttDevices({ gladys, mqttHub, found }) {
+async function probeMqttDevices({ gladys, mqttHub, found, language }) {
   let added = 0;
   for (const { shellyId } of mqttHub.devices()) {
     const externalIds = gladys.externalIds(DEVICE_TYPE, shellyId);
@@ -370,6 +373,7 @@ async function probeMqttDevices({ gladys, mqttHub, found }) {
           // later local discovery fills the address in and it upgrades itself.
           host: undefined,
           externalIds,
+          language,
         }),
       );
       added += 1;
@@ -496,7 +500,12 @@ export async function discoverDevices({
   // this catches exactly the devices mDNS keeps losing — and it needs no IP
   // address at all, since both reads and commands go through the broker.
   if (mqttHub) {
-    const overMqtt = await probeMqttDevices({ gladys, mqttHub, found: byExternalId });
+    const overMqtt = await probeMqttDevices({
+      gladys,
+      mqttHub,
+      found: byExternalId,
+      language: config?.featureNames,
+    });
     if (overMqtt > 0) {
       logger.info(`Discovery: ${overMqtt} device(s) found over MQTT that mDNS did not announce`);
       await reportProgress();

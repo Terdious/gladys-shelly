@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { buildCommand } from '../../src/shelly/commands.js';
+
 import { normalizeConfig } from '../../src/config.js';
 import { createShellyClient } from '../../src/shelly/client.js';
 
@@ -22,8 +24,8 @@ function fakeCloud({ status = { 'switch:0': { output: true } }, fail = null } = 
       }
       return status;
     },
-    async setRelay(id, channel, on) {
-      calls.push(['setRelay', id, channel, on]);
+    async command(id, path, body) {
+      calls.push(['command', id, path, body]);
       if (fail) {
         throw fail;
       }
@@ -188,7 +190,19 @@ describe('setSwitch transport routing', () => {
     const transport = await client.setSwitch({ shellyId: 'plug', host: '10.5.0.9' }, 0, false);
 
     assert.equal(transport, 'cloud');
-    assert.deepEqual(cloud.calls, [['setRelay', 'plug', 0, false]]);
+    assert.deepEqual(cloud.calls, [
+      ['command', 'plug', '/device/relay/control', { channel: '0', turn: 'off' }],
+    ]);
+  });
+
+  it('sends a cover command with its own RPC method and cloud call', async () => {
+    const { client, localCalls } = clientWith({ localResult: {} });
+    const command = buildCommand({ family: 'cover', index: 0, suffix: 'position' }, 40);
+
+    const transport = await client.sendCommand({ shellyId: 'cover', host: '10.5.0.9' }, command);
+
+    assert.equal(transport, 'local');
+    assert.deepEqual(localCalls, [['Cover.GoToPosition', '10.5.0.9', { id: 0, pos: 40 }]]);
   });
 
   it('throws when the command could not be delivered at all', async () => {

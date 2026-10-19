@@ -85,7 +85,13 @@ export const PARAM_SHELLY_GEN = 'SHELLY_GEN';
 export const COMPONENT = {
   SWITCH: 'switch',
   COVER: 'cover',
+  /** Dimmer output: on/off and brightness. */
   LIGHT: 'light',
+  /** Colour outputs (Plus RGBW PM, Pro RGBWW PM): `rgb` array, brightness. */
+  RGB: 'rgb',
+  RGBW: 'rgbw',
+  /** Tunable-white output: brightness and colour temperature `ct` in kelvin. */
+  CCT: 'cct',
   INPUT: 'input',
   /** Three-phase energy meter (Pro 3EM): instantaneous values. */
   EM: 'em',
@@ -135,30 +141,48 @@ export const MODEL_NAMES = {
   'SPEM-003CEBEU120': 'Shelly Pro 3EM',
   'SPEM-003CEBEU400': 'Shelly Pro 3EM',
   'S3SW-001P16EU': 'Shelly 1PM Gen3',
+  'S3SW-001X16EU': 'Shelly 1 Gen3',
+  'S3SW-002P16EU': 'Shelly 2PM Gen3',
+  'S3PL-00112EU': 'Shelly Plug S Gen3',
+  'SNSN-0024X': 'Shelly Plus i4',
+  'S3SN-0024X': 'Shelly i4 Gen3',
+  'SNDC-0D4P10WW': 'Shelly Plus RGBW PM',
+  'SNDM-00100WW': 'Shelly Plus 0-10V Dimmer',
+  'SPSH-002PE16EU': 'Shelly Pro Dual Cover PM',
   'S3EM-003CXCEU63': 'Shelly 3EM Gen3',
 };
 
-/** Messages shown on the Configuration screen (multi-language, `en` mandatory). */
+/** Messages shown on the Configuration screen, in the four Gladys languages. */
 export const CONNECTION_MESSAGES = {
   LOCAL_ONLY: {
     en: 'Connected — local network only (Shelly Cloud fallback disabled).',
     fr: 'Connecté — réseau local uniquement (secours Shelly Cloud désactivé).',
+    de: 'Verbunden — nur lokales Netzwerk (Shelly-Cloud-Ausweichlösung deaktiviert).',
+    es: 'Conectado — solo red local (respaldo de Shelly Cloud desactivado).',
   },
   LOCAL_AND_CLOUD: {
     en: 'Connected — local network, with the Shelly Cloud as a fallback.',
     fr: 'Connecté — réseau local, avec le Shelly Cloud en secours.',
+    de: 'Verbunden — lokales Netzwerk, mit der Shelly Cloud als Ausweichlösung.',
+    es: 'Conectado — red local, con la Shelly Cloud como respaldo.',
   },
   CLOUD_INCOMPLETE: {
     en: 'Shelly Cloud enabled but incomplete: fill in the server address and the authorization key.',
     fr: "Shelly Cloud activé mais incomplet : renseignez l'adresse du serveur et la clé d'autorisation.",
+    de: 'Shelly Cloud aktiviert, aber unvollständig: Gib die Serveradresse und den Autorisierungsschlüssel ein.',
+    es: 'Shelly Cloud activada pero incompleta: indique la dirección del servidor y la clave de autorización.',
   },
   CLOUD_REJECTED: {
     en: 'The Shelly Cloud rejected the authorization key. Copy it again from the Shelly app.',
     fr: "Le Shelly Cloud a refusé la clé d'autorisation. Recopiez-la depuis l'application Shelly.",
+    de: 'Die Shelly Cloud hat den Autorisierungsschlüssel abgelehnt. Kopiere ihn erneut aus der Shelly-App.',
+    es: 'La Shelly Cloud rechazó la clave de autorización. Cópiela de nuevo desde la app Shelly.',
   },
   NO_DEVICE_YET: {
     en: 'Connected — no Shelly device found yet. Run a scan from the Discovery screen.',
     fr: 'Connecté — aucun appareil Shelly trouvé pour le moment. Lancez un scan depuis la page Découverte.',
+    de: 'Verbunden — noch kein Shelly-Gerät gefunden. Starte einen Scan auf der Seite Erkennung.',
+    es: 'Conectado — aún no se ha encontrado ningún Shelly. Lance un escaneo desde la página Descubrimiento.',
   },
 };
 
@@ -167,13 +191,19 @@ export const TRANSPORT_MESSAGES = {
   CLOUD_FALLBACK: {
     en: 'Device unreachable on the local network, falling back to the Shelly Cloud.',
     fr: 'Appareil injoignable sur le réseau local, bascule sur le Shelly Cloud.',
+    de: 'Gerät im lokalen Netzwerk nicht erreichbar, Ausweichen auf die Shelly Cloud.',
+    es: 'Dispositivo inaccesible en la red local, se recurre a la Shelly Cloud.',
   },
   MQTT_FALLBACK: {
     en: 'Device unreachable on the local network, served through your MQTT broker.',
     fr: 'Appareil injoignable sur le réseau local, servi via votre broker MQTT.',
+    de: 'Gerät im lokalen Netzwerk nicht erreichbar, bedient über deinen MQTT-Broker.',
+    es: 'Dispositivo inaccesible en la red local, servido a través de su broker MQTT.',
   },
   AUTH_FAILED: {
     en: 'The device refused the password. Check it in the integration configuration.',
     fr: "L'appareil a refusé le mot de passe. Vérifiez-le dans la configuration de l'intégration.",
+    de: 'Das Gerät hat das Passwort abgelehnt. Prüfe es in der Konfiguration der Integration.',
+    es: 'El dispositivo rechazó la contraseña. Compruébela en la configuración de la integración.',
   },
 };

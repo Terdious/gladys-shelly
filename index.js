@@ -30,6 +30,9 @@ import { createShellyClient } from './src/shelly/client.js';
 import { createTelemetry } from './src/shelly/telemetry.js';
 import { setDeviceValue } from './src/shelly/setValue.js';
 import { CONNECTION_MESSAGES } from './src/shelly/constants.js';
+import { createActions } from './src/actions.js';
+import { createSceneActions } from './src/scenes.js';
+import { createWidgets } from './src/widgets.js';
 
 /**
  * Report the application-level connection status of the integration.
@@ -169,6 +172,26 @@ export function setupIntegration(gladys, { fetchImpl = fetch } = {}) {
     }
   });
 
+  // --- Configuration screen buttons: read-only diagnostics -------------------
+  const getConfig = () => config;
+  const actions = createActions({ gladys, client, telemetry, getConfig, fetchImpl });
+  Object.entries(actions).forEach(([key, handler]) => gladys.onAction(key, handler));
+
+  // --- Scene actions (Gladys >= 5.1.0) ---------------------------------------
+  const sceneActions = createSceneActions({ gladys, client });
+  Object.entries(sceneActions).forEach(([key, handler]) => gladys.onSceneAction(key, handler));
+
+  // --- Dashboard widgets (Gladys >= 5.1.0) -----------------------------------
+  const widgets = createWidgets({ gladys, client, telemetry });
+  Object.entries(widgets).forEach(([key, widget]) => {
+    gladys.onWidgetGet(key, (request) => widget.get(request));
+    if (widget.action) {
+      gladys.onWidgetAction(key, (actionKey, params, context) =>
+        widget.action(actionKey, params, context),
+      );
+    }
+  });
+
   // --- Connection lifecycle --------------------------------------------------
   gladys.on('connected', async () => {
     logger.info('WebSocket connected to Gladys');
@@ -185,7 +208,7 @@ export function setupIntegration(gladys, { fetchImpl = fetch } = {}) {
     telemetry.stop();
   });
 
-  return { client, cloud, telemetry, getConfig: () => config };
+  return { client, cloud, telemetry, getConfig, actions, sceneActions, widgets };
 }
 
 // --- Startup (container entry point only) ------------------------------------

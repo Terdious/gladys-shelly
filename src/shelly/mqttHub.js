@@ -176,12 +176,19 @@ export function parseGen1Topic(topic, payload) {
  * @param {object} options hub options
  * @param {() => object} options.getConfig accessor to the current normalized config
  * @param {(shellyId: string, status: object, context: object) => void} options.onStatus pushed-status handler
+ * @param {(shellyId: string, events: object[]) => void} [options.onEvent] pushed-event handler (button presses)
  * @param {(shellyId: string, prefix: string) => void} [options.onDeviceSeen] called the first
  *   time a device publishes, so discovery can pick up devices mDNS never saw
  * @param {object} [options.mqttImpl] mqtt implementation (tests)
  * @returns {object} the hub
  */
-export function createMqttHub({ getConfig, onStatus, onDeviceSeen = () => {}, mqttImpl = mqtt }) {
+export function createMqttHub({
+  getConfig,
+  onStatus,
+  onDeviceSeen = () => {},
+  onEvent = () => {},
+  mqttImpl = mqtt,
+}) {
   let client = null;
   let connected = false;
   let requestId = 0;
@@ -255,6 +262,13 @@ export function createMqttHub({ getConfig, onStatus, onDeviceSeen = () => {}, mq
       logger.debug(`Unreadable MQTT payload on ${topic}`);
       return;
     }
+    if (frame.method === 'NotifyEvent') {
+      const shellyId = frame.src || topic.replace(/\/events\/rpc$/, '');
+      if (Array.isArray(frame.params?.events)) {
+        onEvent(shellyId, frame.params.events);
+      }
+      return;
+    }
     if (frame.method !== 'NotifyStatus' && frame.method !== 'NotifyFullStatus') {
       return;
     }
@@ -286,6 +300,10 @@ export function createMqttHub({ getConfig, onStatus, onDeviceSeen = () => {}, mq
       clientId: `${RPC_SRC}-${Math.abs(hashString(config.mqttServer))}`,
       reconnectPeriod: 5000,
       connectTimeout: 10000,
+      // mqtt >= 5.16 stops for good after a refused CONNACK unless told
+      // otherwise. A broker that restarts, or refuses the credentials until the
+      // user fixes them, must not leave the fleet silent until a restart.
+      reconnectOnConnackError: true,
     });
 
     client.on('connect', () => {

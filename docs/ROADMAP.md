@@ -4,7 +4,7 @@
 > [#1](https://github.com/Terdious/gladys-shelly/issues/1). This file is the
 > technical companion: shipped scope, frozen conventions, and pointers.
 
-## Shipped — v0.1.0 (bench validation pending)
+## Shipped — v0.1.0
 
 - **Repository brought up to the [Gladys integration template](https://github.com/GladysAssistant/integration-template-js)**:
   manifest, Dockerfile (multi-arch, read-only rootfs, non-root), CI (Prettier /
@@ -58,30 +58,62 @@
   5 minutes, because a socket can stay open and silent (device wedged, firmware
   bug) and only a real read tells that apart from "nothing changed".
 
-- **120 tests** (`node --test`): a fake Shelly device (real HTTP server, real
-  HTTP _and_ WebSocket digest handshakes, real pushes and socket drops) and a
-  fake Gladys core exercising the real SDK wiring.
+## Shipped — v1.0.0 (2026-08-01)
+
+- **Gen1 devices** (issue #7, polling part): REST + Basic auth, normalized into
+  the Gen2+ component model (`src/shelly/gen1/`), so a Gen1 3EM exposes the same
+  24 features as a Pro 3EM.
+- **MQTT** as a third transport and as the reliable inventory of a large fleet
+  (`src/shelly/mqttHub.js`): Gen2+ RPC frames and the Gen1 topic dialect.
+- **Self-pacing real-time lane**: measures the states it publishes and stretches
+  its cadence to stay within the 300 states/min budget.
+
+## Shipped — next release (Unreleased in CHANGELOG.md)
+
+- **Ecosystem upgrade**: SDK 0.15, Gladys >= 5.1.0, catalog categories, release
+  tooling (GitHub Releases from CHANGELOG.md), CI on Node 22 + 24 with a Docker
+  build, Dependabot, SECURITY.md, mqtt 5.16.
+- **Four languages** (en, fr, de, es): manifest, runtime messages, user docs,
+  and the `feature_names` option for new devices.
+- [#3](https://github.com/Terdious/gladys-shelly/issues/3) **Roller shutters**
+  (`cover:N`): state + position (calibrated only), Gen1 2.5 roller mode.
+- [#4](https://github.com/Terdious/gladys-shelly/issues/4) **Lights**
+  (`light`, `rgb`, `rgbw`, `cct`): on/off, brightness, colour, colour
+  temperature (mireds). Gen1 Dimmer / Bulb / Duo / RGBW2 colour mode.
+- [#5](https://github.com/Terdious/gladys-shelly/issues/5) **Inputs**
+  (`input:N`): switch mode -> input, button mode -> button fed by
+  `NotifyEvent` + `input_event` scene trigger, count mode -> counter.
+- **Scenes**: `input_event` and `device_reachability_changed` triggers,
+  `turn_on_for` (device-side timer) and `reboot` actions.
+- **Widgets**: `energy_meter`, `switches`, `shutters`, `network`.
+- **Diagnostic** actions: `fleet_diagnostic`, `test_device`.
+- **241 tests** (`node --test`).
+
+Covers, lights and inputs follow the documented API and are **waiting for
+bench validation**: #3, #4 and #5 stay open until a user confirms them on real
+hardware (position direction, colour round trip, button events).
 
 ## Open
 
 Priority order.
 
-- [#3](https://github.com/Terdious/gladys-shelly/issues/3) **Roller shutters**
-  (`cover:N`) — open / close / stop / position.
-- [#4](https://github.com/Terdious/gladys-shelly/issues/4) **Lights and
-  dimmers** (`light:N`, RGBW) — on/off, brightness, colour.
-- [#5](https://github.com/Terdious/gladys-shelly/issues/5) **Inputs**
-  (`input:N`) — buttons and dry contacts as Gladys sensors and triggers.
+- **Bench validation** of #3 / #4 / #5 on real hardware (Plus 2PM in cover
+  mode, Plus RGBW PM, Plus i4 / i4 Gen3, Gen1 2.5 roller, Dimmer 2).
 - [#6](https://github.com/Terdious/gladys-shelly/issues/6) **Validate the
-  Shelly Cloud fallback on a real account** — the client is written against the
-  documented Cloud Control API but has only been exercised against a stub.
-- [#7](https://github.com/Terdious/gladys-shelly/issues/7) **Gen1 devices**
-  (Shelly 1 / 2.5 / Plug S "SHPLG-S" / Dimmer 2) — legacy REST + CoIoT, a
-  second protocol stack behind the same device model.
-- [#8](https://github.com/Terdious/gladys-shelly/issues/8) **Catalog cover
-  image** (`cover.png`, 800×534, ≤150 KB) — the manifest points at it already.
+  Shelly Cloud fallback on a real account** — status, relay, and now the roller
+  and light control calls (`/device/relay/roller/control`,
+  `/device/relay/roller/settings/topos`, `/device/light/control`).
 - [#9](https://github.com/Terdious/gladys-shelly/issues/9) **Per-device
   passwords** — today one password is shared by every device.
+- [#12](https://github.com/Terdious/gladys-shelly/pull/12) **Virtual
+  components** (external contribution, LinkedGo ST1820 thermostat): review and
+  rebase on the new command router (`src/shelly/commands.js`).
+- [#7](https://github.com/Terdious/gladys-shelly/issues/7) **Gen1, what is
+  left**: battery-powered sleepy sensors (H&T, Flood, Door/Window) need an
+  "expected to sleep" rule before mapping; Gen1 button events (CoIoT, or the
+  `event_cnt` of `/status` over MQTT).
+- RGBW white channel, analog inputs (no matching Gladys category yet), the
+  `energy_meter` widget's daily energy (needs midnight snapshots in `/data`).
 
 ## external_id conventions (FROZEN)
 
@@ -93,7 +125,13 @@ its history. These are contracts, not implementation details.
   therefore the hardware identity.
 - Feature: `ext:shelly:device:<shelly id>:<component family>:<index>:<suffix>`,
   e.g. `…:switch:0:binary`, `…:em:0:l1_active_power`,
-  `…:emdata:0:total_energy`.
+  `…:emdata:0:total_energy`, `…:cover:0:state`, `…:cover:0:position`,
+  `…:light:0:brightness`, `…:rgbw:0:color`, `…:cct:0:temperature`,
+  `…:input:0:binary` / `:button` / `:counter`.
+- Manifest keys, stored in users' scenes and dashboards: actions
+  `fleet_diagnostic`, `test_device`; scene triggers `input_event`,
+  `device_reachability_changed`; scene actions `turn_on_for`, `reboot`; widgets
+  `energy_meter`, `switches`, `shutters`, `network`.
 - The component family and index mirror the Shelly RPC vocabulary verbatim, so
   the command router parses them back out of the id with no lookup table.
 
@@ -113,6 +151,7 @@ its history. These are contracts, not implementation details.
 ## Fleet conventions
 
 - Default branch: **`master`**; releases from the Actions → Release workflow
-  (bump + tag + multi-arch image `:X.Y.Z` + `:latest`, manifest in lockstep).
+  (bump + tag + multi-arch image `:X.Y.Z` + `:latest`, manifest in lockstep,
+  GitHub Release with the CHANGELOG.md section as notes).
 - Catalog cover: **`cover.png`**, 800×534, ≤150 KB, artwork filling the frame.
 - Quality gates: `npm run format:check` / `npm run lint` / `npm test`.

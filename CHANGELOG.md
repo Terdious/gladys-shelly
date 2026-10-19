@@ -1,0 +1,96 @@
+# Changelog
+
+All notable changes to this integration are documented in this file. The format
+follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
+uses [semantic versioning](https://semver.org/).
+
+Describe each change under `## [Unreleased]` as you make it. The Release
+workflow moves that section under the version it ships, and the section becomes
+the notes of the version's GitHub Release.
+
+## [Unreleased]
+
+### Added
+
+- **Roller shutters** (`cover:N`, roadmap #3): open / stop / close and the
+  position (100 % = open, as in Gladys) through the standard Gladys shutter
+  control, power, voltage, current, energy and temperature. The position only
+  exists on a calibrated cover. Gen1 Shelly 2.5 in roller mode included.
+- **Lights** (roadmap #4): dimmers (`light:N`) with on/off and brightness,
+  colour outputs (`rgb:N`, `rgbw:N`) with the colour, tunable whites (`cct:N`)
+  with the colour temperature (2700 K to 6500 K, in mireds as Gladys expects),
+  and their power. Gen1 Dimmer, Bulb, Duo and RGBW2 in colour mode included.
+- **Inputs and buttons** (`input:N`, roadmap #5): an input in switch mode is a
+  real-time on/off input, a button a Gladys button fed by the device events
+  (single, double, triple, long press over the WebSocket or MQTT), a counter a
+  counter. A Shelly i4 now gives four usable buttons. Gen1 inputs (i3) report
+  their on/off state.
+- Devices created before get their new features (inputs of a Pro 4PM or a Plus
+  1, a calibrated cover...) with **Update** in the Discover tab; their existing
+  features, ids, history and scenes are unchanged.
+- **Scene triggers** (Gladys 5.1): **Button pressed on a Shelly** (device,
+  input, press) and **Shelly reachability changed** (unreachable on every
+  transport / reachable again). A press delivered by both the WebSocket and MQTT
+  runs the scene once.
+- **Scene actions**: **Turn on for a duration** (the Shelly itself switches the
+  relay or the light off after 1 s to 1 day, `toggle_after` / Gen1 `timer`, so
+  a Gladys restart never leaves it on) and **Restart a Shelly**.
+- **Dashboard widgets**: **Shelly energy meter** (live power gauge, phase or
+  channel tiles, energy, power chart, voltages, currents, power factor,
+  frequency, source), **Shelly switches** (state and power per output, total,
+  All on / All off), **Shelly shutters** (state and position per cover, Open /
+  Stop / Close / Position for the group) and **Shelly network health** (real
+  time, fallback and unreachable devices, weak Wi-Fi, firmware updates, Gladys
+  state budget).
+- **Diagnostic** buttons on the Configuration screen: **Diagnostic of the
+  devices** (configuration without any secret, real-time channels, state
+  budget, then per device transport, last data, circuit breaker, components,
+  Wi-Fi signal, uptime, firmware update, outputs) and **Test a device** (reads
+  one device now, created or not, by its IP: identity, answer times, password,
+  components, real time, with a hint on failure). Read-only; MAC addresses and
+  local addresses masked by default.
+- **Feature names** option: the names of newly discovered devices in English,
+  French, German or Spanish. Existing devices, ids and selectors unchanged.
+- Model names of the Plus i4, i4 Gen3, Plus RGBW PM, Plus 0-10V Dimmer, Pro
+  Dual Cover PM, 1 Gen3, 2PM Gen3 and Plug S Gen3.
+- Every text of the Configuration screen, the connection messages, the badges
+  and the user documentation in English, French, German and Spanish
+  (`docs/de.md`, `docs/es.md`).
+- GitHub Releases: each version tag gets its release with the notes of this
+  file, linked from the Gladys Supervision page.
+
+### Changed
+
+- Gladys **5.1.0** or newer is required (widgets, scene triggers and actions),
+  the catalog lists the integration under Energy and Lighting.
+- Integration SDK 0.15.0, Node 22 or newer; the CI runs on Node 22 and 24 and
+  builds the Docker image; Dependabot keeps the dependencies up to date.
+- The `/data` volume belongs to the `node` user of the image.
+
+### Security
+
+- mqtt 5.16: six broker-reachable advisories fixed (several could crash the
+  integration). The MQTT connection keeps retrying after a refused CONNACK (a
+  broker restarting, credentials being fixed) instead of stopping for good.
+- `SECURITY.md`: how to report a vulnerability privately.
+
+## [1.0.0] - 2026-08-01
+
+### Added
+
+- First release: Gen2+ local RPC with SHA-256 digest authentication, Gen1
+  devices normalized into the same model, core-mediated mDNS discovery merged
+  with typed and remembered addresses, MQTT as a third transport and inventory,
+  and the Shelly Cloud as a fallback, with per-device transport badges and the
+  degraded state.
+- Features derived from the reported components: relays (`switch`),
+  three-phase and single-phase meters (`em`, `emdata`, `em1`, `em1data`,
+  `pm1`), temperature, humidity and battery.
+- Real-time updates over the Gen2+ WebSocket and MQTT, with a self-pacing
+  real-time lane that keeps the fleet within the Gladys budget of 300 states
+  per minute.
+- Per-device local circuit breaker, connection status on the Configuration
+  screen, English and French documentation.
+
+[Unreleased]: https://github.com/Terdious/gladys-shelly/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Terdious/gladys-shelly/releases/tag/v1.0.0

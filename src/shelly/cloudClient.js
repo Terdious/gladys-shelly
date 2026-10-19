@@ -140,11 +140,21 @@ export function createCloudClient({ getConfig, fetchImpl = fetch, timeoutMs = CL
    * @returns {Promise<object>} the API response payload
    */
   async function setRelay(identifier, channel, on) {
-    return post('/device/relay/control', {
-      id: normalizeCloudId(identifier),
+    return command(identifier, '/device/relay/control', {
       channel: String(channel),
       turn: on ? 'on' : 'off',
     });
+  }
+
+  /**
+   * Send a control call through the cloud (relay, roller, light).
+   * @param {string} identifier any Shelly identifier of the device
+   * @param {string} path Cloud Control API path, e.g. `/device/relay/roller/control`
+   * @param {object} body form fields besides the device id
+   * @returns {Promise<object>} the API response payload
+   */
+  async function command(identifier, path, body) {
+    return post(path, { id: normalizeCloudId(identifier), ...body });
   }
 
   /**
@@ -157,5 +167,5 @@ export function createCloudClient({ getConfig, fetchImpl = fetch, timeoutMs = CL
     return Object.keys(statuses).length;
   }
 
-  return { getAllStatus, getStatus, setRelay, checkCredentials };
+  return { getAllStatus, getStatus, setRelay, command, checkCredentials };
 }

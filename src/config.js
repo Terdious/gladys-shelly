@@ -8,6 +8,22 @@
 // assume clean, typed values and never re-parse anything.
 // -----------------------------------------------------------------------------
 
+import { normalizeLanguage } from './shelly/featureNames.js';
+
+/**
+ * Defaults of the configuration form, mirroring the manifest `config_schema`
+ * (`test/manifest.test.js` keeps the two in step). Every other field has no
+ * default: an empty form is a complete, local-only setup.
+ */
+export const DEFAULT_CONFIG = {
+  device_username: 'admin',
+  cloud_enabled: false,
+  mqtt_enabled: false,
+  feature_names: 'en',
+  refresh_interval: '30',
+  realtime_interval: '5',
+};
+
 /** Refresh interval floor/ceiling, in seconds (the manifest select stays inside). */
 const MIN_REFRESH_SECONDS = 5;
 const MAX_REFRESH_SECONDS = 3600;
@@ -120,6 +136,8 @@ export function normalizeConfig(rawConfig = {}) {
     // transports. Read-only for us, and a wish rather than an order: we honour
     // it when we can and report the real outcome through publishTransports.
     preferLocal: config.GLADYS_PREFER_LOCAL !== false,
+    // Language of the feature names of newly discovered devices.
+    featureNames: normalizeLanguage(config.feature_names),
   };
 }
 
