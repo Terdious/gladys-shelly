@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-19
+
 ### Added
 
 - **Roller shutters** (`cover:N`, roadmap #3): open / stop / close and the
@@ -92,5 +94,6 @@ the notes of the version's GitHub Release.
 - Per-device local circuit breaker, connection status on the Configuration
   screen, English and French documentation.
 
-[Unreleased]: https://github.com/Terdious/gladys-shelly/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Terdious/gladys-shelly/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Terdious/gladys-shelly/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Terdious/gladys-shelly/releases/tag/v1.0.0
