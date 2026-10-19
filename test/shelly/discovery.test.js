@@ -458,6 +458,24 @@ describe('probeHost outcomes', () => {
     assert.equal(outcome.device.external_id, 'ext:shelly:device:shem3-483fdac37e3f');
   });
 
+  it('names the old CoAP v1 models (4Pro, Sense) instead of creating an empty device', async () => {
+    const fourPro = await startFakeShelly({
+      info: { type: 'SHSW-44', mac: 'AABBCCDDEEFF', auth: false, fw: '20190117-130000/v1.4.4' },
+      gen1Status: { relays: [{ ison: false }] },
+    });
+    devices.push(fourPro);
+
+    const outcome = await probeHost({
+      gladys,
+      client: routerFor(),
+      config: normalizeConfig({}),
+      host: fourPro.host,
+    });
+
+    assert.equal(outcome.reason, SKIP_REASON.UNSUPPORTED_MODEL);
+    assert.match(describeSkip(outcome), /Shelly 4Pro \(SHSW-44\).*CoAP v1/);
+  });
+
   it('still reports a genuine non-Shelly as such', async () => {
     // The permissive `_http._tcp` browse will hand over printers and NAS boxes.
     // Widening the Gen1 test must not turn every HTTP responder into a Shelly.
@@ -477,7 +495,7 @@ describe('probeHost outcomes', () => {
 
     assert.equal(outcome.reason, SKIP_REASON.NEEDS_PASSWORD);
     // The sentence has to name the fix, not just the symptom.
-    assert.match(describeSkip(outcome), /requires a password/i);
+    assert.match(describeSkip(outcome), /refused the password.*Per-device passwords/i);
   });
 
   it('returns the device when the probe succeeds', async () => {

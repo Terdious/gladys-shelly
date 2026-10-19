@@ -10,6 +10,14 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Shelly 4Pro (`SHSW-44`) and Shelly Sense (`SHSEN-1`), first-generation
+  models on the old CoAP v1 firmware, are named in the scan summary as not
+  supported instead of being probed as regular Gen1 devices (#7).
+- The scan summary of a device refusing the password now points at
+  "Per-device passwords" as well as "Device password".
+
 ## [1.4.0] - 2026-10-19
 
 ### Added
