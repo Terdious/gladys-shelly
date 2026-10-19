@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-19
+
 ### Fixed
 
 - The Shelly 4Pro (`SHSW-44`) and Shelly Sense (`SHSEN-1`), first-generation
@@ -161,7 +163,8 @@ the notes of the version's GitHub Release.
 - Per-device local circuit breaker, connection status on the Configuration
   screen, English and French documentation.
 
-[Unreleased]: https://github.com/Terdious/gladys-shelly/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Terdious/gladys-shelly/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/Terdious/gladys-shelly/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/Terdious/gladys-shelly/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Terdious/gladys-shelly/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Terdious/gladys-shelly/compare/v1.1.0...v1.2.0

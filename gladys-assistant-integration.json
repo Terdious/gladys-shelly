@@ -8,8 +8,8 @@
     "de": "Verbinde deine Shelly-Geräte (Relais, Stecker, Zähler, Rollläden, Lichter) lokal mit Gladys.",
     "es": "Conecte sus Shelly (relés, enchufes, medidores, persianas, luces) a Gladys, en local."
   },
-  "version": "1.4.0",
-  "docker_image": "ghcr.io/terdious/gladys-shelly:1.4.0",
+  "version": "1.4.1",
+  "docker_image": "ghcr.io/terdious/gladys-shelly:1.4.1",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/Terdious/gladys-shelly/master/cover.png",
   "transports": ["local", "cloud"],
