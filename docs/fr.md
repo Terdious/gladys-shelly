@@ -60,11 +60,15 @@ optionnels.
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Adresses d'appareils supplémentaires** | Vos Shelly ne sont pas trouvés automatiquement (autre VLAN, mDNS désactivé sur l'appareil ou filtré par le routeur). Saisissez les IP séparées par des virgules. |
 | **Nom d'utilisateur des appareils**      | Laissez `admin` : c'est le seul nom d'utilisateur accepté par les Gen2+.                                                                                         |
-| **Mot de passe des appareils**           | Vous avez activé l'authentification sur vos Shelly. **Un seul mot de passe** est utilisé pour tous les appareils.                                                |
+| **Mot de passe des appareils**           | Vous avez activé l'authentification sur vos Shelly. Le mot de passe commun à vos appareils (les autres vont dans le champ suivant).                              |
+| **Mots de passe par appareil**           | Certains appareils ont un mot de passe différent : entrées `appareil=motdepasse` séparées par `;` (identifiant Shelly, MAC ou IP).                               |
 
-> ⚠️ Si vos Shelly ont des mots de passe **différents**, l'intégration ne pourra
-> joindre que ceux qui partagent le mot de passe saisi. Uniformisez le mot de
-> passe, ou désactivez l'authentification sur votre réseau local de confiance.
+> 🔑 **Des mots de passe différents ?** Gardez le plus courant dans **Mot de
+> passe des appareils**, et listez les autres dans **Mots de passe par
+> appareil**, sous la forme `appareil=motdepasse` séparés par `;` : l'appareil
+> est son identifiant Shelly (`shellyplus1-a8032ab12345`), son adresse MAC ou son
+> adresse IP. Un appareil qui refuse son mot de passe affiche un point orange sur
+> son badge, et l'écran Configuration le nomme.
 
 ### Shelly Cloud (secours)
 
@@ -219,6 +223,8 @@ vocabulaire.
 | `pm1:N`                       | Puissance, tension, courant, énergie d'un compteur seul (PM Mini)                                                                                                                                                                                                                                                                  |
 | `temperature:N`, `humidity:N` | Température (°C), humidité (%)                                                                                                                                                                                                                                                                                                     |
 | `devicepower:N`               | Niveau de batterie (%)                                                                                                                                                                                                                                                                                                             |
+| `flood:N`, `smoke:N`          | Fuite d'eau, fumée (Flood et Smoke Gen1, équivalents Gen2+)                                                                                                                                                                                                                                                                        |
+| `contact:N`, `illuminance:N`  | Ouverture porte/fenêtre (fermé / ouvert) et luminosité (lux) d'un Door/Window Gen1                                                                                                                                                                                                                                                 |
 | `number:N` / `boolean:N`      | Composants virtuels des appareils « Powered by Shelly » (LinkedGo ST1820…) : consigne du thermostat (pilotable, bornée à la plage et au pas de l'appareil), température (°C) et humidité (%) de la pièce, options marche/arrêt comme « Enable thermostat » ou « Child lock » (pilotables si l'appareil l'autorise), état du relais |
 
 Matériel validé sur des payloads réels : **Shelly Pro 3EM**, **Shelly Pro
@@ -236,9 +242,20 @@ nécessite le réseau local ou MQTT — le Shelly Cloud ne sait pas le relayer.
 
 En **Gen1**, le même modèle s'applique : un Shelly 2.5 en mode volet devient un
 volet, un Dimmer, une Bulb ou un Duo une lumière, un RGBW2 en mode couleur une
-lumière couleur, et les entrées d'un i3 des entrées. Les Gen1 n'ont pas
-d'événements de bouton joignables depuis un conteneur (ils passent par du
-multicast CoIoT) : seul l'état marche/arrêt de leurs entrées remonte.
+lumière couleur, les entrées d'un i3 des entrées **et des boutons** (appuis
+simple, double, triple et long, depuis le compteur d'appuis de chaque lecture, ou
+instantanément par MQTT), un **Flood** un détecteur de fuite, un **Smoke** un
+détecteur de fumée, un **Door/Window** un capteur d'ouverture avec sa
+luminosité.
+
+**Les appareils sur batterie dorment** (H&T, Flood, Door/Window, Smoke, Button,
+H&T Plus/Gen3…) : endormis, ils ne répondent pas, c'est leur état normal.
+L'intégration les garde donc **en local** tant qu'ils se sont manifestés dans
+les 26 dernières heures, ne les met jamais en pause et ne déclenche jamais
+« Joignabilité d'un Shelly » pendant leur sommeil. Leurs valeurs arrivent à leur
+réveil : configurez **MQTT** sur eux pour recevoir chaque relevé au moment où il
+est envoyé, un appareil endormi n'est presque jamais réveillé au moment d'une
+lecture.
 
 ### Volets roulants
 
@@ -427,6 +444,11 @@ Vous avez activé l'authentification sur ce Shelly, et le mot de passe saisi dan
 Gladys ne correspond pas. Sur les Gen2+ le nom d'utilisateur est **toujours**
 `admin` : seul le mot de passe compte. Corrigez-le et sauvegardez — la
 correction est prise en compte immédiatement, sans redémarrer le conteneur.
+
+Si seul cet appareil a un autre mot de passe, ajoutez-le dans **Mots de passe
+par appareil** (`son-identifiant-shelly=son-mot-de-passe`) plutôt que de changer
+le mot de passe commun. L'écran Configuration nomme les appareils qui refusent
+leur mot de passe, et **Tester un appareil** indique le mot de passe essayé.
 
 ### Un appareil bascule tout le temps en Cloud (badge orange)
 

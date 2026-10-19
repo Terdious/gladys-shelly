@@ -76,6 +76,99 @@ function parseHosts(value) {
 }
 
 /**
+ * Parse the per-device passwords: `<device>=<password>` entries separated by
+ * `;` or new lines, `<device>` being a Shelly id, a MAC address or an IP
+ * address / host name.
+ *
+ * A password may itself contain `;` or `=`: an entry only ends where the next
+ * `<device>=` begins (see DEVICE_KEY), and only the FIRST `=` of an entry
+ * separates the device from its password. Spaces around the separators are
+ * ignored, so a password listed here cannot end with a space (the shared
+ * password field above can).
+ *
+ * @param {unknown} value raw config value
+ * @returns {Array<{key: string, password: string}>} entries, keys normalized
+ */
+export function parseDevicePasswords(value) {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return [];
+  }
+  return value
+    .split(ENTRY_SEPARATOR)
+    .map((entry) => {
+      const separator = entry.indexOf('=');
+      if (separator <= 0) {
+        return undefined;
+      }
+      const key = normalizeDeviceKey(entry.slice(0, separator));
+      const password = entry.slice(separator + 1).replace(/\s+$/, '');
+      return key && password !== '' ? { key, password } : undefined;
+    })
+    .filter(Boolean);
+}
+
+/**
+ * What can start an entry of the per-device passwords: a Shelly id
+ * (`shellyplus1-a8032ab12345`), a MAC, an IPv4 address or a dotted host name,
+ * then `=`. Splitting only in front of one of those keeps a `;` or a `word=`
+ * inside a password where it belongs.
+ */
+const DEVICE_KEY =
+  '(?:[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{6,12}|(?:[0-9a-f]{2}[:-]?){5}[0-9a-f]{2}|\\d{1,3}(?:\\.\\d{1,3}){3}|[\\w-]+(?:\\.[\\w-]+)+)(?::\\d+)?';
+const ENTRY_SEPARATOR = new RegExp(`\\s*(?:;|\\r?\\n)\\s*(?=${DEVICE_KEY}=)`, 'i');
+
+/**
+ * Normalize anything identifying a device into one comparable form: lower
+ * case, scheme and port dropped from an address, separators dropped from a
+ * MAC (`AA:BB:CC:DD:EE:FF` and `aabbccddeeff` are the same device).
+ * @param {unknown} value a Shelly id, a MAC, an IP address or a host name
+ * @returns {string} the normalized key, '' when empty
+ */
+export function normalizeDeviceKey(value) {
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+  if (/^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/.test(text)) {
+    return text.replace(/[:-]/g, '');
+  }
+  // An IPv4 address or a host name may carry a port: it is not part of the key.
+  return text.replace(/:(\d+)$/, '');
+}
+
+/**
+ * The credentials to use for ONE device: its own password when the
+ * configuration lists one for its Shelly id, its MAC (the tail of a Shelly
+ * id) or its address, the shared password otherwise.
+ * @param {object} config normalized configuration
+ * @param {object} device what is known of the device
+ * @param {string} [device.shellyId] the Shelly id
+ * @param {string} [device.host] its address
+ * @param {string} [device.mac] its MAC address
+ * @returns {{username: string, password: string, perDevice: boolean}} the credentials
+ */
+export function credentialsFor(config, { shellyId, host, mac } = {}) {
+  const candidates = new Set(
+    [
+      shellyId,
+      // `shellypro3em-2cbcbba663cc` -> `2cbcbba663cc`, the MAC a user reads on the label.
+      shellyId && String(shellyId).includes('-') ? String(shellyId).split('-').pop() : undefined,
+      mac,
+      host,
+    ]
+      .map(normalizeDeviceKey)
+      .filter(Boolean),
+  );
+  const match = (config?.devicePasswords || []).find((entry) => candidates.has(entry.key));
+  return {
+    username: config?.deviceUsername || DEFAULT_DEVICE_USERNAME,
+    password: match ? match.password : config?.devicePassword || '',
+    perDevice: Boolean(match),
+  };
+}
+
+/**
  * Normalize the raw configuration object into typed, defaulted values.
  * @param {object} [rawConfig] configuration as received from Gladys
  * @returns {object} the normalized configuration
@@ -95,6 +188,8 @@ export function normalizeConfig(rawConfig = {}) {
     // Never trim a password: a trailing space can be part of it. Only reject
     // a non-string (never saved).
     devicePassword: typeof config.device_password === 'string' ? config.device_password : '',
+    // Passwords of the devices that do not share the one above (issue #9).
+    devicePasswords: parseDevicePasswords(config.device_passwords),
     cloudEnabled: toBoolean(config.cloud_enabled, false),
     // A pasted server address often carries the scheme and a trailing slash.
     cloudServer:

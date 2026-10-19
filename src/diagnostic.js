@@ -315,7 +315,8 @@ export function buildFleetDiagnostic(snapshot, { includeIdentifiers, now = Date.
   );
   lines.push(
     `Additional addresses: ${config.manualHosts.length} · device username: ${config.deviceUsername} · ` +
-      `device password: ${config.devicePassword ? 'set' : 'not set'}`,
+      `device password: ${config.devicePassword ? 'set' : 'not set'} · ` +
+      `per-device passwords: ${(config.devicePasswords || []).length}`,
   );
   lines.push(
     `Shelly Cloud: ${config.cloudEnabled ? `enabled (server ${config.cloudServer || 'missing'}, key ${config.cloudAuthKey ? 'set' : 'missing'})` : 'disabled'}`,
@@ -398,7 +399,7 @@ const HINTS = {
     'Nothing answered at this address: device off, wrong IP (DHCP lease changed?), or another VLAN the Gladys host cannot reach. Run a scan to refresh the address.',
   'not-a-shelly':
     'Something answered, but it is not a Shelly: the address belongs to another device now. Run a scan.',
-  auth: 'The device refused the password: set the same password on every Shelly, or fix "Device password" in the configuration.',
+  auth: 'The device refused the password: fix "Device password", or give this device its own entry in "Per-device passwords" (its Shelly id, MAC or IP address = its password).',
   status: 'The device answered its identity but not its status: reboot it, then test again.',
 };
 
@@ -450,12 +451,18 @@ export function buildDeviceTestReport(outcome, { includeIdentifiers, now = Date.
   lines.push(outcome.gen >= 2 ? '[2] Shelly.GetStatus (RPC)' : '[2] GET /status (Gen1 REST)');
   if (outcome.statusError) {
     lines.push(`  FAILED after ${outcome.statusMs} ms: ${outcome.statusError}`);
+    if (outcome.passwordSource) {
+      lines.push(`  Credentials used: ${outcome.passwordSource}`);
+    }
     lines.push('', `Result: FAILED — ${HINTS[outcome.failure] ?? HINTS.status}`);
     return truncateReport(redactor.scrub(lines.join('\n')));
   }
   lines.push(
     `  Answered in ${outcome.statusMs} ms${outcome.authenticated ? ' (password accepted)' : ''}`,
   );
+  if (outcome.passwordSource) {
+    lines.push(`  Credentials used: ${outcome.passwordSource}`);
+  }
   lines.push(`  Components: ${componentSummary(outcome.status)}`);
   lines.push(`  Features the integration maps: ${outcome.featureCount}`);
   statusHealthLines(outcome.rawStatus ?? outcome.status).forEach((line) => lines.push(`  ${line}`));

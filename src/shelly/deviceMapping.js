@@ -12,6 +12,8 @@ import {
   MODEL_NAMES,
   PARAM_IP_ADDRESS,
   PARAM_SHELLY_GEN,
+  PARAM_SHELLY_SLEEPY,
+  SLEEPY_MODELS,
   PARAM_SHELLY_ID,
   PARAM_SHELLY_MODEL,
 } from './constants.js';
@@ -131,6 +133,9 @@ export function buildDevice({ info, status, config, host, externalIds, language,
       { name: PARAM_SHELLY_ID, value: String(info?.id || '') },
       { name: PARAM_SHELLY_MODEL, value: String(info?.model || '') },
       { name: PARAM_SHELLY_GEN, value: String(info?.gen ?? '') },
+      ...(isSleepyDevice({ model: info?.model, status, info })
+        ? [{ name: PARAM_SHELLY_SLEEPY, value: '1' }]
+        : []),
     ],
   };
 }
@@ -201,4 +206,43 @@ export function readGeneration(device) {
   const raw = device?.params?.find((param) => param.name === PARAM_SHELLY_GEN)?.value;
   const generation = Number.parseInt(raw, 10);
   return Number.isFinite(generation) && generation > 0 ? generation : 2;
+}
+
+/**
+ * Whether a device sleeps between reports (battery-powered sensors).
+ *
+ * Known by its model, by the `sleep_mode` a Gen1 announces in `/shelly`, or by
+ * its status: a Gen2+ `devicepower` with no external power, or a Gen1 battery
+ * level on a device without relays.
+ *
+ * @param {object} params what is known of the device
+ * @param {string} [params.model] the model id
+ * @param {object} [params.status] a status document (normalized for Gen1)
+ * @param {object} [params.info] the `/shelly` identity document
+ * @returns {boolean} true when silence is its normal state
+ */
+export function isSleepyDevice({ model, status, info } = {}) {
+  if (info?.sleep_mode === true || SLEEPY_MODELS.has(String(model || '').toUpperCase())) {
+    return true;
+  }
+  const power = status?.['devicepower:0'];
+  if (power && power.external && power.external.present === false) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a device created in Gladys sleeps between reports: the discovery
+ * param, or its model for a device created before the param existed.
+ * @param {object} device a Gladys device
+ * @returns {boolean} true for a sleepy device
+ */
+export function readSleepy(device) {
+  const param = device?.params?.find((p) => p.name === PARAM_SHELLY_SLEEPY)?.value;
+  if (param === '1') {
+    return true;
+  }
+  const model = device?.params?.find((p) => p.name === 'SHELLY_MODEL')?.value;
+  return SLEEPY_MODELS.has(String(model || '').toUpperCase());
 }

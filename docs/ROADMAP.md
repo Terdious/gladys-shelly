@@ -93,6 +93,18 @@ Covers, lights and inputs follow the documented API and are **waiting for
 bench validation**: #3, #4 and #5 stay open until a user confirms them on real
 hardware (position direction, colour round trip, button events).
 
+## Shipped — next release
+
+- [#9](https://github.com/Terdious/gladys-shelly/issues/9) **Per-device
+  passwords**: `device_passwords` (`id|mac|ip=password; …`), resolved by
+  `credentialsFor()` in `src/config.js` on every path (RPC, WebSocket, Gen1,
+  discovery, device test); a refused password is badged (unreachable +
+  degraded + reason) and named in the connection status.
+- [#7](https://github.com/Terdious/gladys-shelly/issues/7) **Gen1, the rest**:
+  Flood / Smoke / Door/Window (`flood`, `smoke`, `contact`, `illuminance`),
+  sleepy devices (`SHELLY_SLEEPY` param, `SLEEPY_SILENCE_MS` = 26 h), Gen1
+  button presses from `input_event` (MQTT) and `event_cnt` (poll).
+
 ## Open
 
 Priority order.
@@ -103,15 +115,8 @@ Priority order.
   Shelly Cloud fallback on a real account** — status, relay, and now the roller
   and light control calls (`/device/relay/roller/control`,
   `/device/relay/roller/settings/topos`, `/device/light/control`).
-- [#9](https://github.com/Terdious/gladys-shelly/issues/9) **Per-device
-  passwords** — today one password is shared by every device.
-- [#12](https://github.com/Terdious/gladys-shelly/pull/12) **Virtual
-  components** (external contribution, LinkedGo ST1820 thermostat): review and
-  rebase on the new command router (`src/shelly/commands.js`).
-- [#7](https://github.com/Terdious/gladys-shelly/issues/7) **Gen1, what is
-  left**: battery-powered sleepy sensors (H&T, Flood, Door/Window) need an
-  "expected to sleep" rule before mapping; Gen1 button events (CoIoT, or the
-  `event_cnt` of `/status` over MQTT).
+- **Bench validation** of the virtual components (#12, merged in 1.2.0) on the
+  LinkedGo ST1820, and of #9 / #7 on real Gen1 sleepy devices.
 - RGBW white channel, analog inputs (no matching Gladys category yet), the
   `energy_meter` widget's daily energy (needs midnight snapshots in `/data`).
 

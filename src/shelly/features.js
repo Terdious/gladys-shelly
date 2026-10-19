@@ -832,7 +832,8 @@ function inputSpecs(id) {
       min: 0,
       max: 25,
       required: 'state',
-      present: (status) => status.state === null,
+      // Button mode on Gen2+ (no state), or a Gen1 input counting presses.
+      present: (status) => status.state === null || typeof status.event_cnt === 'number',
       // A press is an event, never a status field.
       read: () => undefined,
     },
@@ -1016,6 +1017,88 @@ function virtualSpecs(family, id, meta) {
   ];
 }
 
+/**
+ * Gen1 input events (`inputs[].event`, MQTT `input_event`) -> the Gen2+ event
+ * names the rest of the code uses. `SL` / `LS` combinations have no Gladys
+ * equivalent and are left out.
+ */
+export const GEN1_INPUT_EVENTS = {
+  S: 'single_push',
+  SS: 'double_push',
+  SSS: 'triple_push',
+  L: 'long_push',
+};
+
+/**
+ * Build the spec of an alarm component: `flood:N` (water leak) or `smoke:N`.
+ * @param {string} family `flood` or `smoke`
+ * @param {number} id component index
+ * @returns {object[]} the feature specs
+ */
+function alarmSpecs(family, id) {
+  const leak = family === COMPONENT.FLOOD;
+  return [
+    {
+      key: `${family}:${id}:alarm`,
+      realtime: true,
+      nameKey: leak ? 'leak' : 'smoke',
+      category: leak
+        ? DEVICE_FEATURE_CATEGORIES.LEAK_SENSOR
+        : DEVICE_FEATURE_CATEGORIES.SMOKE_SENSOR,
+      type: DEVICE_FEATURE_TYPES.SENSOR.BINARY,
+      min: 0,
+      max: 1,
+      required: 'alarm',
+      read: (status) => (typeof status.alarm === 'boolean' ? (status.alarm ? 1 : 0) : undefined),
+    },
+  ];
+}
+
+/**
+ * Build the spec of a `contact:N` (Gen1 Door/Window). Gladys opening sensors
+ * read 1 as closed and 0 as open.
+ * @param {number} id component index
+ * @returns {object[]} the feature specs
+ */
+function contactSpecs(id) {
+  return [
+    {
+      key: `${COMPONENT.CONTACT}:${id}:binary`,
+      realtime: true,
+      nameKey: 'opening',
+      category: DEVICE_FEATURE_CATEGORIES.OPENING_SENSOR,
+      type: DEVICE_FEATURE_TYPES.SENSOR.BINARY,
+      min: 0,
+      max: 1,
+      required: 'open',
+      requiredNonNull: true,
+      read: (status) => (typeof status.open === 'boolean' ? (status.open ? 0 : 1) : undefined),
+    },
+  ];
+}
+
+/**
+ * Build the spec of an `illuminance:N` component.
+ * @param {number} id component index
+ * @returns {object[]} the feature specs
+ */
+function illuminanceSpecs(id) {
+  return [
+    {
+      key: `${COMPONENT.ILLUMINANCE}:${id}:lux`,
+      nameKey: 'illuminance',
+      category: DEVICE_FEATURE_CATEGORIES.LIGHT_SENSOR,
+      type: DEVICE_FEATURE_TYPES.SENSOR.DECIMAL,
+      unit: DEVICE_FEATURE_UNITS.LUX,
+      min: 0,
+      max: 100000,
+      required: 'lux',
+      requiredNonNull: true,
+      read: (status) => round(status.lux, 0),
+    },
+  ];
+}
+
 /** Component family -> spec builder. An unlisted family is simply ignored. */
 const SPEC_BUILDERS = {
   [COMPONENT.SWITCH]: switchSpecs,
@@ -1033,6 +1116,10 @@ const SPEC_BUILDERS = {
   [COMPONENT.RGBW]: (id) => lightSpecs(COMPONENT.RGBW, id),
   [COMPONENT.CCT]: (id) => lightSpecs(COMPONENT.CCT, id),
   [COMPONENT.INPUT]: inputSpecs,
+  [COMPONENT.FLOOD]: (id) => alarmSpecs(COMPONENT.FLOOD, id),
+  [COMPONENT.SMOKE]: (id) => alarmSpecs(COMPONENT.SMOKE, id),
+  [COMPONENT.CONTACT]: contactSpecs,
+  [COMPONENT.ILLUMINANCE]: illuminanceSpecs,
 };
 
 /**

@@ -100,6 +100,7 @@ Every field is optional. A local-only install works with all of them empty.
 | `manual_hosts`      | `string`  | Comma-separated IPs/hostnames for devices mDNS cannot see          |
 | `device_username`   | `string`  | Device username — always `admin` on Gen2+                          |
 | `device_password`   | `secret`  | Device password, when authentication is enabled on the devices     |
+| `device_passwords`  | `secret`  | Per-device passwords: `id-mac-or-ip=password; …` (issue #9)        |
 | `cloud_enabled`     | `boolean` | Turn on the Shelly Cloud fallback                                  |
 | `cloud_server`      | `string`  | Account server, e.g. `shelly-53-eu.shelly.cloud`                   |
 | `cloud_auth_key`    | `secret`  | Shelly Cloud authorization key                                     |

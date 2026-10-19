@@ -232,7 +232,14 @@ function normalizeInputs(status, normalized) {
   const inputs = Array.isArray(status.inputs) ? status.inputs : [];
   inputs.forEach((input, index) => {
     if (input && (input.input === 0 || input.input === 1)) {
-      normalized[`${COMPONENT.INPUT}:${index}`] = { id: index, state: input.input === 1 };
+      const component = { id: index, state: input.input === 1 };
+      // A momentary input counts its presses: telemetry turns an increase of
+      // `event_cnt` into a button event (`event` is the last press type).
+      if (isNumber(input.event_cnt)) {
+        component.event_cnt = input.event_cnt;
+        component.event = typeof input.event === 'string' ? input.event : '';
+      }
+      normalized[`${COMPONENT.INPUT}:${index}`] = component;
     }
   });
 }
@@ -254,6 +261,22 @@ function normalizeSensors(status, normalized) {
   }
   if (isNumber(status.hum?.value)) {
     normalized[`${COMPONENT.HUMIDITY}:0`] = { id: 0, rh: status.hum.value };
+  }
+  // Flood (SHWT-1) and Smoke (SHSM-01): a top-level boolean.
+  if (typeof status.flood === 'boolean') {
+    normalized[`${COMPONENT.FLOOD}:0`] = { id: 0, alarm: status.flood };
+  }
+  if (typeof status.smoke === 'boolean') {
+    normalized[`${COMPONENT.SMOKE}:0`] = { id: 0, alarm: status.smoke };
+  }
+  // Door/Window 1 and 2: `sensor.state` is "open" / "close", meaningless
+  // while `is_valid` is false (just woken up, not calibrated).
+  const contactState = status.sensor?.state;
+  if ((contactState === 'open' || contactState === 'close') && status.sensor?.is_valid !== false) {
+    normalized[`${COMPONENT.CONTACT}:0`] = { id: 0, open: contactState === 'open' };
+  }
+  if (isNumber(status.lux?.value)) {
+    normalized[`${COMPONENT.ILLUMINANCE}:0`] = { id: 0, lux: status.lux.value };
   }
   if (isNumber(status.bat?.value)) {
     normalized[`${COMPONENT.DEVICEPOWER}:0`] = {

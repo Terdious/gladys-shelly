@@ -10,6 +10,28 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Added
+
+- **Per-device passwords** (#9): a new optional secret field lists the devices
+  whose password differs from the shared one, as `device=password` entries
+  separated by `;` (Shelly id, MAC or IP address; a `;` or `=` inside a
+  password is kept). Every path uses it: discovery, polling, real time,
+  commands, Gen1, and the device test, which says which password it tried.
+- A device that refuses its password gets an orange dot and the reason on its
+  badge, and the Configuration screen names it (up to three names).
+- **Gen1 battery sensors** (#7): Flood (water leak), Smoke, Door/Window 1 and 2
+  (opening, illuminance), plus the `flood`, `smoke` and `illuminance`
+  components of Gen2+ devices; over MQTT as well.
+- **Sleepy devices** (#7): battery-powered models (H&T, Flood, Door/Window,
+  Smoke, Button, Motion, Plus/Gen3 H&T, Plus Smoke) stay local while they
+  reported in the last 26 hours: no unreachable badge, no circuit breaker, no
+  "Shelly reachability changed" while they sleep; over MQTT they are not polled
+  at all.
+- **Gen1 buttons** (#7): single, double, triple and long presses of Gen1 inputs
+  (i3, the SW inputs of a 1 or 2.5) become a button feature and fire "Button
+  pressed on a Shelly", from the MQTT `input_event` topic or from the press
+  counter of each reading, counted once when both report it.
+
 ## [1.2.0] - 2026-10-19
 
 ### Added

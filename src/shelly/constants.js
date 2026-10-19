@@ -76,6 +76,36 @@ export const PARAM_IP_ADDRESS = 'IP_ADDRESS';
 export const PARAM_SHELLY_ID = 'SHELLY_ID';
 export const PARAM_SHELLY_MODEL = 'SHELLY_MODEL';
 export const PARAM_SHELLY_GEN = 'SHELLY_GEN';
+/** `1` on a battery-powered device that sleeps between reports (issue #7). */
+export const PARAM_SHELLY_SLEEPY = 'SHELLY_SLEEPY';
+
+/**
+ * Battery-powered models that sleep between reports: H&T, Flood, Door/Window,
+ * Smoke, Button and Motion (Gen1), Plus / Gen3 H&T and Plus Smoke (Gen2+).
+ * Asleep, they answer nothing — which is their normal state, not a failure.
+ * A model missing here is still recognized by its status (`isSleepyDevice`).
+ */
+export const SLEEPY_MODELS = new Set([
+  'SHHT-1',
+  'SHWT-1',
+  'SHDW-1',
+  'SHDW-2',
+  'SHSM-01',
+  'SHBTN-1',
+  'SHBTN-2',
+  'SHMOS-01',
+  'SHMOS-02',
+  'SNSN-0013A',
+  'S3SN-0U12A',
+  'SNSN-0031Z',
+]);
+
+/**
+ * How long a sleepy device may stay silent before it counts as unreachable.
+ * A Gen1 H&T reports every few hours at most, a Flood or a Door/Window only
+ * on an event plus a daily check-in: a little over a day covers both.
+ */
+export const SLEEPY_SILENCE_MS = 26 * 60 * 60 * 1000;
 
 /**
  * Component families of the Gen2+ status payload we map to Gladys features.
@@ -93,6 +123,14 @@ export const COMPONENT = {
   /** Tunable-white output: brightness and colour temperature `ct` in kelvin. */
   CCT: 'cct',
   INPUT: 'input',
+  /** Water leak (Gen1 Flood, Flood Gen4): `alarm`. */
+  FLOOD: 'flood',
+  /** Smoke detector (Gen1 Smoke, Plus Smoke): `alarm`. */
+  SMOKE: 'smoke',
+  /** Door/window contact (Gen1 Door/Window 1 and 2, normalized): `open`. */
+  CONTACT: 'contact',
+  /** Illuminance (Door/Window, Gen2+ illuminance component): `lux`. */
+  ILLUMINANCE: 'illuminance',
   /** Three-phase energy meter (Pro 3EM): instantaneous values. */
   EM: 'em',
   /** Three-phase energy meter: cumulated energy counters. */
@@ -241,3 +279,35 @@ export const TRANSPORT_MESSAGES = {
     es: 'El dispositivo rechazó la contraseña. Compruébela en la configuración de la integración.',
   },
 };
+
+/**
+ * Complete a connection message with the devices refusing the password, named
+ * so the user knows which entry of "Per-device passwords" to add (issue #9).
+ * At most three names, the core keeps the message short.
+ * @param {object|undefined} message multi-language message of the channels
+ * @param {string[]} shellyIds devices refusing the password
+ * @param {object[]} [devices] the Gladys devices, for their names
+ * @returns {object|undefined} the message to report
+ */
+export function withPasswordWarning(message, shellyIds, devices = []) {
+  if (!shellyIds || shellyIds.length === 0) {
+    return message;
+  }
+  const nameOf = (shellyId) =>
+    (devices || []).find((device) => String(device.external_id || '').endsWith(`:${shellyId}`))
+      ?.name || shellyId;
+  const names = shellyIds.slice(0, 3).map(nameOf).join(', ');
+  const more = shellyIds.length > 3 ? ` (+${shellyIds.length - 3})` : '';
+  const warning = {
+    en: `${shellyIds.length} device(s) refused the password: ${names}${more}. Add them to "Per-device passwords".`,
+    fr: `${shellyIds.length} appareil(s) refusent le mot de passe : ${names}${more}. Ajoutez-les dans « Mots de passe par appareil ».`,
+    de: `${shellyIds.length} Gerät(e) lehnen das Passwort ab: ${names}${more}. Trage sie unter „Passwörter pro Gerät“ ein.`,
+    es: `${shellyIds.length} dispositivo(s) rechazan la contraseña: ${names}${more}. Añádalos en «Contraseñas por dispositivo».`,
+  };
+  return Object.fromEntries(
+    Object.entries(warning).map(([language, text]) => [
+      language,
+      message?.[language] ? `${message[language]} ${text}` : text,
+    ]),
+  );
+}

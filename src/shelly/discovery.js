@@ -25,6 +25,7 @@
 
 import { logger } from '@gladysassistant/integration-sdk';
 
+import { credentialsFor } from '../config.js';
 import { mapWithConcurrency } from './async.js';
 import {
   DEVICE_TYPE,
@@ -35,7 +36,13 @@ import {
   POLL_CONCURRENCY,
   SKIP_REASON,
 } from './constants.js';
-import { buildDevice, readGeneration, readHost, readShellyId } from './deviceMapping.js';
+import {
+  buildDevice,
+  readGeneration,
+  readHost,
+  readShellyId,
+  readSleepy,
+} from './deviceMapping.js';
 import { getGen1Settings, getGen1Status } from './gen1/rest.js';
 import { normalizeGen1Info, normalizeGen1Settings, normalizeGen1Status } from './gen1/normalize.js';
 import { getShellyInfo, ShellyAuthError } from './rpc.js';
@@ -241,12 +248,13 @@ export function describeSkip({ host, reason, detail, model }) {
  * @returns {Promise<object>} the outcome
  */
 async function probeGen1Host({ gladys, config, host, info, fetchImpl }) {
-  const credentials = {
+  const identity = normalizeGen1Info(info);
+  const { username, password } = credentialsFor(config, {
+    shellyId: identity.id,
     host,
-    username: config?.deviceUsername,
-    password: config?.devicePassword,
-    fetchImpl,
-  };
+    mac: info?.mac,
+  });
+  const credentials = { host, username, password, fetchImpl };
 
   let status;
   try {
@@ -267,7 +275,6 @@ async function probeGen1Host({ gladys, config, host, info, fetchImpl }) {
     logger.debug(`${host} did not answer /settings: ${err.message}`);
   }
 
-  const identity = normalizeGen1Info(info);
   return {
     host,
     device: buildDevice({
@@ -619,6 +626,7 @@ export function buildTargets(devices) {
       shellyId: readShellyId(device),
       host: readHost(device),
       gen: readGeneration(device),
+      sleepy: readSleepy(device),
     }))
     .filter((target) => Boolean(target.shellyId));
 }

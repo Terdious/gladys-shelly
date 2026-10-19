@@ -58,11 +58,14 @@ Open the integration **Configuration** screen. Every field is optional.
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Additional device addresses** | Your Shelly devices are not found automatically (another VLAN, mDNS disabled on the device or filtered by the router). Enter the IPs, comma-separated. |
 | **Device username**             | Leave it as `admin`: it is the only username Gen2+ devices accept.                                                                                     |
-| **Device password**             | You enabled authentication on your Shelly devices. **One single password** is used for all of them.                                                    |
+| **Device password**             | You enabled authentication on your Shelly devices. The password shared by your devices (the others go in the next field).                              |
+| **Per-device passwords**        | Some devices have a different password: `device=password` entries separated by `;` (Shelly id, MAC or IP address).                                     |
 
-> ⚠️ If your Shelly devices have **different** passwords, the integration can
-> only reach the ones sharing the password you entered. Unify the password, or
-> disable authentication on your trusted local network.
+> 🔑 **Different passwords?** Keep the most common one in **Device password**,
+> and list the others in **Per-device passwords**, as `device=password` entries
+> separated by `;`: the device is its Shelly id (`shellyplus1-a8032ab12345`),
+> its MAC address or its IP address. A device that refuses its password shows
+> an orange dot on its badge, and the Configuration screen names it.
 
 ### Shelly Cloud (fallback)
 
@@ -210,6 +213,8 @@ after this version works as long as it speaks the same vocabulary.
 | `pm1:N`                       | Power, voltage, current and energy of a standalone meter (PM Mini)                                                                                                                                                                                                                                     |
 | `temperature:N`, `humidity:N` | Temperature (°C), humidity (%)                                                                                                                                                                                                                                                                         |
 | `devicepower:N`               | Battery level (%)                                                                                                                                                                                                                                                                                      |
+| `flood:N`, `smoke:N`          | Water leak, smoke (Gen1 Flood and Smoke, Gen2+ equivalents)                                                                                                                                                                                                                                            |
+| `contact:N`, `illuminance:N`  | Door/window opening (closed / open) and illuminance (lux) of a Gen1 Door/Window                                                                                                                                                                                                                        |
 | `number:N` / `boolean:N`      | Virtual components of "Powered by Shelly" devices (LinkedGo ST1820…): thermostat setpoint (controllable, clamped to the device range and step), room temperature (°C), humidity (%), on/off options such as "Enable thermostat" or "Child lock" (controllable when the device allows it), relay status |
 
 Hardware validated against real payloads: **Shelly Pro 3EM**, **Shelly Pro
@@ -227,9 +232,18 @@ cannot relay it.
 
 On **Gen1**, the same model applies: a Shelly 2.5 in roller mode becomes a
 shutter, a Dimmer, a Bulb or a Duo a light, an RGBW2 in colour mode a colour
-light, and the inputs of an i3 inputs. Gen1 has no button events reachable from
-a container (they travel over CoIoT multicast): only the on/off of its inputs is
-reported.
+light, the inputs of an i3 inputs **and buttons** (single, double, triple and
+long presses, from the press counter of each reading, or instantly over MQTT),
+a **Flood** a water leak sensor, a **Smoke** a smoke detector, a **Door/Window**
+an opening sensor with its illuminance.
+
+**Battery-powered devices sleep** (H&T, Flood, Door/Window, Smoke, Button,
+Plus/Gen3 H&T…): asleep, they answer nothing, which is their normal state. The
+integration therefore keeps them **local** as long as they reported in the last
+26 hours, never parks them and never fires "Shelly reachability changed" while
+they sleep. Their values arrive when they wake up: configure **MQTT** on them
+to receive each report as it is sent, a sleeping device is almost never awake
+when a poll comes.
 
 ### Roller shutters
 
@@ -408,6 +422,11 @@ You enabled authentication on that Shelly, and the password entered in Gladys
 does not match. On Gen2+ the username is **always** `admin`: only the password
 matters. Fix it and save — the correction takes effect immediately, without
 restarting the container.
+
+If only this device has another password, add it to **Per-device passwords**
+(`its-shelly-id=its-password`) instead of changing the shared one. The
+Configuration screen names the devices that refuse their password, and **Test
+a device** says which password it tried.
 
 ### A device keeps falling back to Cloud (orange badge)
 
