@@ -17,6 +17,7 @@ export const FEATURE_NAME_LANGUAGES = ['en', 'fr', 'de', 'es'];
 
 export const FEATURE_NAMES = {
   en: {
+    white: 'White',
     on_off: 'On/Off',
     power: 'Power',
     voltage: 'Voltage',
@@ -47,6 +48,7 @@ export const FEATURE_NAMES = {
     illuminance: 'Illuminance',
   },
   fr: {
+    white: 'Blanc',
     on_off: 'Marche/Arrêt',
     power: 'Puissance',
     voltage: 'Tension',
@@ -77,6 +79,7 @@ export const FEATURE_NAMES = {
     illuminance: 'Luminosité ambiante',
   },
   de: {
+    white: 'Weiß',
     on_off: 'Ein/Aus',
     power: 'Leistung',
     voltage: 'Spannung',
@@ -107,6 +110,7 @@ export const FEATURE_NAMES = {
     illuminance: 'Beleuchtungsstärke',
   },
   es: {
+    white: 'Blanco',
     on_off: 'Encendido/Apagado',
     power: 'Potencia',
     voltage: 'Tensión',

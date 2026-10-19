@@ -10,6 +10,28 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Added
+
+- **RGBW white channel** (#4): an RGBW output (Plus RGBW PM, Gen1 RGBW2 in
+  colour mode) exposes its white LEDs as a 0-100 % light feature,
+  controllable.
+- **Profile changes** (#4): a scan names, in the logs, the features a created
+  device no longer reports (a Plus 2PM switched from relays to cover...), and
+  **Diagnostic of the devices** lists them, so the leftovers can be deleted.
+
+### Changed
+
+- **Shelly Cloud** (#6): the devices served by the cloud are read in ONE
+  `all_status` request per refresh cycle instead of one request per device,
+  and every Cloud API call is spaced one second apart (the documented limit);
+  a rate-limit answer is named in the logs.
+
+### Fixed
+
+- **Gen1 devices through the Shelly Cloud** (#6): the cloud returns their flat
+  Gen1 status, which is now normalized like a local Gen1 read; it was mapped
+  to nothing before.
+
 ## [1.3.0] - 2026-10-19
 
 ### Added

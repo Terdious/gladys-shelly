@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { buildCommand } from '../../src/shelly/commands.js';
-import { buildDevice, buildStates } from '../../src/shelly/deviceMapping.js';
+import { buildDevice, buildStates, staleFeatures } from '../../src/shelly/deviceMapping.js';
 import { featureName, FEATURE_NAMES } from '../../src/shelly/featureNames.js';
 import {
   buildFeatureSpecs,
@@ -129,7 +129,12 @@ describe('light outputs', () => {
     const status = {
       'rgbw:0': { id: 0, output: true, rgb: [255, 128, 0], brightness: 80, white: 0 },
     };
-    assert.deepEqual(keysOf(status), ['rgbw:0:binary', 'rgbw:0:brightness', 'rgbw:0:color']);
+    assert.deepEqual(keysOf(status), [
+      'rgbw:0:binary',
+      'rgbw:0:brightness',
+      'rgbw:0:color',
+      'rgbw:0:white',
+    ]);
     assert.equal(stateOf(status, 'rgbw:0:color'), 0xff8000);
   });
 
@@ -252,5 +257,45 @@ describe('Gen1 rollers, lights and inputs', () => {
     const status = normalizeGen1Status({ inputs: [{ input: 1 }, { input: 0 }, { input: 0 }] });
     assert.equal(stateOf(status, 'input:0:binary'), 1);
     assert.equal(stateOf(status, 'input:1:binary'), 0);
+  });
+});
+
+describe('RGBW white channel and profile changes (issue #4)', () => {
+  it('maps the white LEDs of an RGBW output to a percentage, and back to 0-255', () => {
+    const status = {
+      'rgbw:0': { id: 0, output: true, rgb: [0, 0, 0], brightness: 50, white: 128 },
+    };
+    assert.equal(stateOf(status, 'rgbw:0:white'), 50);
+    const command = buildCommand({ family: 'rgbw', index: 0, suffix: 'white' }, 100);
+    assert.deepEqual(command.rpc, { method: 'RGBW.Set', params: { id: 0, white: 255 } });
+    assert.equal(command.gen1, '/color/0?white=255');
+    assert.equal(command.state, 100);
+    // An RGB output has no white channel.
+    assert.equal(buildCommand({ family: 'rgb', index: 0, suffix: 'white' }, 50), undefined);
+  });
+
+  it('names the features a device left behind when it changed profile', () => {
+    const asRelays = buildDevice({
+      info: { id: 'shellyplus2pm-a' },
+      status: { 'switch:0': { output: false }, 'switch:1': { output: false } },
+      externalIds: externalIdsFor('shellyplus2pm-a'),
+    });
+    const asCover = buildDevice({
+      info: { id: 'shellyplus2pm-a' },
+      status: { 'cover:0': { state: 'stopped' }, 'input:0': { state: null } },
+      externalIds: externalIdsFor('shellyplus2pm-a'),
+    });
+    const created = {
+      ...asRelays,
+      features: [
+        ...asRelays.features,
+        { external_id: 'ext:shelly:device:shellyplus2pm-a:input:0:button' },
+      ],
+    };
+    assert.deepEqual(staleFeatures(created, asCover), [
+      'ext:shelly:device:shellyplus2pm-a:switch:0:binary',
+      'ext:shelly:device:shellyplus2pm-a:switch:1:binary',
+    ]);
+    assert.deepEqual(staleFeatures(asCover, asCover), []);
   });
 });

@@ -84,6 +84,10 @@ temporary Wi-Fi drop).
 > Treat it like a password. Gladys stores it encrypted and never shows it in
 > clear text.
 
+The integration reads the whole account in **one request per refresh cycle**
+and spaces its calls one second apart, the limit of the Shelly Cloud API: a
+fleet on the cloud never trips it.
+
 When both channels are configured, Gladys shows a standard **"Prefer the local
 connection"** toggle (on by default). It is a preference: the integration
 applies it when it can, and reports the per-device reality through the
@@ -261,8 +265,8 @@ it stops, the state reads "stopped" and the position is the real one.
 
 Dimmers and colour outputs become Gladys **lights**: on/off, brightness (0 to
 100 %), colour for `rgb` / `rgbw`, colour temperature for `cct` (2700 K warm to
-6500 K cold). Changing the brightness does not switch the light on or off. The
-white channel of an RGBW output and the analog inputs are not exposed yet.
+6500 K cold). Changing the brightness does not switch the light on or off. An RGBW output also exposes its **white** LEDs (0 to 100 %). Analog inputs are
+not exposed yet.
 
 ### Inputs and buttons
 
@@ -391,6 +395,11 @@ Gladys shows available updates in **Integrations**. Click **Update**: the
 container is recreated with the new image, and your configuration and devices
 are preserved. The notes of each version are on the
 [GitHub releases page](https://github.com/Terdious/gladys-shelly/releases).
+
+A Shelly that changed **profile** (a Plus 2PM from relays to cover, a dimmer
+from light to switch) keeps its old features in Gladys, empty. The scan names
+them in the logs and **Diagnostic of the devices** lists them: click **Update**
+for the new ones, then delete the old ones in Gladys.
 
 New features of an existing device (a shutter calibrated since, a newly
 supported component) appear after a **discovery**: click **Update** on the

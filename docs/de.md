@@ -88,6 +88,11 @@ Ausfall).
 > Shelly-Kontos. Behandle ihn wie ein Passwort. Gladys speichert ihn
 > verschlüsselt und zeigt ihn nie im Klartext.
 
+Die Integration liest das ganze Konto mit **einer Anfrage pro
+Aktualisierungszyklus** und hält zwischen ihren Aufrufen eine Sekunde Abstand,
+das Limit der Shelly-Cloud-API: Auch eine ganze Installation über die Cloud
+überschreitet es nie.
+
 Sind beide Kanäle eingerichtet, zeigt Gladys den Standardschalter **„Lokale
 Verbindung bevorzugen“** (standardmäßig an). Er ist eine Vorliebe: Die
 Integration befolgt ihn, wenn sie kann, und meldet die Realität pro Gerät über
@@ -256,8 +261,8 @@ Während der Bewegung zeigt Gladys die Richtung (öffnet / schließt); danach
 Dimmer und Farbausgänge werden Gladys-**Lichter**: ein/aus, Helligkeit (0 bis
 100 %), Farbe bei `rgb` / `rgbw`, Farbtemperatur bei `cct` (2700 K warm bis
 6500 K kalt). Die Helligkeit zu ändern schaltet das Licht weder ein noch aus.
-Der Weißkanal eines RGBW-Ausgangs und die analogen Eingänge werden noch nicht
-angeboten.
+Ein RGBW-Ausgang bietet auch seine **weißen** LEDs an (0 bis 100 %). Analoge
+Eingänge werden noch nicht angeboten.
 
 ### Eingänge und Taster
 
@@ -390,6 +395,12 @@ Gladys zeigt verfügbare Updates unter **Integrationen**. Klicke auf
 **Aktualisieren**: Der Container wird mit dem neuen Image neu erstellt, deine
 Konfiguration und Geräte bleiben erhalten. Die Hinweise jeder Version stehen auf
 der [GitHub-Releases-Seite](https://github.com/Terdious/gladys-shelly/releases).
+
+Ein Shelly, der sein **Profil** wechselt (ein Plus 2PM von Relais auf Rollladen,
+ein Dimmer von Licht auf Schalter), behält seine alten Funktionen in Gladys,
+leer. Der Scan nennt sie in den Protokollen und die **Diagnose der Geräte**
+listet sie auf: Klicke für die neuen auf **Aktualisieren** und lösche die alten
+in Gladys.
 
 Neue Funktionen eines bestehenden Geräts (ein inzwischen kalibrierter Rollladen,
 eine neu unterstützte Komponente) erscheinen nach einer **Erkennung**: Klicke

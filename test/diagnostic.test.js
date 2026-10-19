@@ -47,6 +47,7 @@ function deps({ devices, config, describeDevice }) {
           lastSeenAt: Date.now() - 3000,
           transport: { transport: 'cloud', degraded: true, message: { en: 'cloud fallback' } },
           webSocketLive: false,
+          staleFeatures: ['ext:shelly:device:shellypro3em-2cbcbba663cc:switch:0:binary'],
         })),
       describeBudget: () => ({
         configuredRealtimeSeconds: 5,
@@ -120,6 +121,7 @@ describe('fleet diagnostic', () => {
     assert.match(report, /-81 dBm — WEAK/);
     assert.match(report, /Uptime: 1 d 1 h/);
     assert.match(report, /3 failure\(s\) in a row, parked until/);
+    assert.match(report, /Features no longer reported \(profile changed\?[^)]*\): switch:0:binary/);
   });
 
   it('shows the identifiers when asked, never the secrets', async () => {

@@ -87,6 +87,10 @@ corte de Wi-Fi temporal).
 > Shelly. Trátela como una contraseña. Gladys la guarda cifrada y nunca la
 > muestra en claro.
 
+La integración lee toda la cuenta con **una sola petición por ciclo de
+actualización** y espacia sus llamadas un segundo, el límite de la API de Shelly
+Cloud: ni un parque entero en la nube lo supera.
+
 Cuando ambos canales están configurados, Gladys muestra el interruptor estándar
 **«Preferir la conexión local»** (activado por defecto). Es una preferencia: la
 integración la aplica cuando puede e informa de la realidad por dispositivo con
@@ -258,8 +262,8 @@ Mientras se mueve, Gladys muestra el sentido (abriendo / cerrando); al parar,
 Los reguladores y salidas de color se convierten en **luces** de Gladys:
 encendido/apagado, brillo (0 a 100 %), color para `rgb` / `rgbw`, temperatura de
 color para `cct` (2700 K cálida a 6500 K fría). Cambiar el brillo no enciende ni
-apaga la luz. El canal blanco de una salida RGBW y las entradas analógicas aún no
-se exponen.
+apaga la luz. Una salida RGBW expone también sus LED **blancos** (0 a 100 %). Las entradas
+analógicas aún no se exponen.
 
 ### Entradas y botones
 
@@ -395,6 +399,12 @@ Gladys muestra las actualizaciones disponibles en **Integraciones**. Pulse
 **Actualizar**: el contenedor se recrea con la nueva imagen, y su configuración
 y dispositivos se conservan. Las notas de cada versión están en la
 [página de releases de GitHub](https://github.com/Terdious/gladys-shelly/releases).
+
+Un Shelly que cambia de **perfil** (un Plus 2PM de relés a persiana, un
+regulador de luz a interruptor) conserva sus antiguas funcionalidades en Gladys,
+vacías. El escaneo las nombra en los registros y el **Diagnóstico de los
+dispositivos** las lista: pulse **Actualizar** para las nuevas y borre las
+antiguas en Gladys.
 
 Las nuevas funcionalidades de un dispositivo existente (una persiana calibrada
 desde entonces, un componente recién compatible) aparecen tras un
