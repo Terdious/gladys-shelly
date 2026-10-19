@@ -10,6 +10,15 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Added
+
+- **Virtual components** (`number:N`, `boolean:N`) of "Powered by Shelly"
+  devices, read from `Shelly.GetComponents` (paginated): the LinkedGo ST1820
+  floor-heating thermostat now exposes its setpoint (controllable, clamped to
+  the device range and step), room temperature, humidity and on/off options.
+  Writes go over the local network or MQTT. Contributed by @sylvainpelissier
+  (#12).
+
 ## [1.1.0] - 2026-10-19
 
 ### Added

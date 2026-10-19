@@ -11,6 +11,8 @@ lokal nicht erreichbar, kann sie auf **MQTT** und dann auf die **Shelly Cloud**
 ausweichen. Nichts ist Pflicht: Eine rein lokale Installation funktioniert mit
 einem **völlig leeren Formular**.
 
+Virtuelle Komponenten werden nach der Selbstbeschreibung des Geräts benannt und typisiert (`Shelly.GetComponents`, bei jedem Scan gelesen): nach der deklarierten Rolle, sonst nach Name, Einheit und Zugriff. `enum:N`-Komponenten werden noch nicht abgebildet. Eine virtuelle Komponente zu steuern braucht das lokale Netz oder MQTT — die Shelly Cloud kann das nicht weiterleiten.
+
 > **Unterstützte Generationen:** Gen2 und neuer — Shelly **Plus**, **Pro**,
 > **Mini**, **Gen3**, **Gen4** — **und Gen1** (Shelly 1, 1PM, 2.5, Plug S
 > „SHPLG-S“, EM, 3EM, Dimmer, i3…).
@@ -196,20 +198,21 @@ Ein/Aus, ein Pro 1PM zusätzlich Leistung, Spannung, Strom und Energie — und e
 nach dieser Version erschienener Shelly funktioniert, solange er dasselbe
 Vokabular spricht.
 
-| Shelly-Komponente             | Was du in Gladys bekommst                                                                                                      |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `switch:N`                    | Ein/Aus (steuerbar), Leistung (W), Spannung (V), Strom (A), Gesamtenergie (kWh), interne Temperatur (°C)                       |
-| `cover:N`                     | Rollladen öffnen / stopp / schließen (steuerbar), Position (%) nach Kalibrierung, Leistung, Spannung, Strom, Energie           |
-| `light:N`                     | Licht ein/aus und Helligkeit (steuerbar), Leistung und Energie                                                                 |
-| `rgb:N` / `rgbw:N`            | Wie `light:N`, plus die Farbe (steuerbar)                                                                                      |
-| `cct:N`                       | Wie `light:N`, plus die Farbtemperatur (steuerbar)                                                                             |
-| `input:N`                     | Schaltermodus: ein Eingang (ein/aus). Tastermodus: ein Taster und der Szenen-Auslöser „Taster gedrückt“. Zählmodus: ein Zähler |
-| `em:N` (dreiphasig)           | Pro Phase L1/L2/L3: Wirkleistung (W), Scheinleistung (VA), Spannung (V), Strom (A) — plus Summen und Neutralleiterstrom        |
-| `emdata:N`                    | Gesamte und eingespeiste Energie, pro Phase und gesamt (kWh)                                                                   |
-| `em1:N` / `em1data:N`         | Einphasige Entsprechungen (Shelly Pro EM, 1PM Mini Gen3)                                                                       |
-| `pm1:N`                       | Leistung, Spannung, Strom und Energie eines eigenständigen Zählers (PM Mini)                                                   |
-| `temperature:N`, `humidity:N` | Temperatur (°C), Luftfeuchtigkeit (%)                                                                                          |
-| `devicepower:N`               | Batteriestand (%)                                                                                                              |
+| Shelly-Komponente             | Was du in Gladys bekommst                                                                                                                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `switch:N`                    | Ein/Aus (steuerbar), Leistung (W), Spannung (V), Strom (A), Gesamtenergie (kWh), interne Temperatur (°C)                                                                                                            |
+| `cover:N`                     | Rollladen öffnen / stopp / schließen (steuerbar), Position (%) nach Kalibrierung, Leistung, Spannung, Strom, Energie                                                                                                |
+| `light:N`                     | Licht ein/aus und Helligkeit (steuerbar), Leistung und Energie                                                                                                                                                      |
+| `rgb:N` / `rgbw:N`            | Wie `light:N`, plus die Farbe (steuerbar)                                                                                                                                                                           |
+| `cct:N`                       | Wie `light:N`, plus die Farbtemperatur (steuerbar)                                                                                                                                                                  |
+| `input:N`                     | Schaltermodus: ein Eingang (ein/aus). Tastermodus: ein Taster und der Szenen-Auslöser „Taster gedrückt“. Zählmodus: ein Zähler                                                                                      |
+| `em:N` (dreiphasig)           | Pro Phase L1/L2/L3: Wirkleistung (W), Scheinleistung (VA), Spannung (V), Strom (A) — plus Summen und Neutralleiterstrom                                                                                             |
+| `emdata:N`                    | Gesamte und eingespeiste Energie, pro Phase und gesamt (kWh)                                                                                                                                                        |
+| `em1:N` / `em1data:N`         | Einphasige Entsprechungen (Shelly Pro EM, 1PM Mini Gen3)                                                                                                                                                            |
+| `pm1:N`                       | Leistung, Spannung, Strom und Energie eines eigenständigen Zählers (PM Mini)                                                                                                                                        |
+| `temperature:N`, `humidity:N` | Temperatur (°C), Luftfeuchtigkeit (%)                                                                                                                                                                               |
+| `devicepower:N`               | Batteriestand (%)                                                                                                                                                                                                   |
+| `number:N` / `boolean:N`      | Virtuelle Komponenten von „Powered by Shelly“-Geräten (LinkedGo ST1820…): Thermostat-Sollwert (steuerbar, auf Bereich und Schritt des Geräts begrenzt), Raumtemperatur (°C), Luftfeuchtigkeit (%), Ein/Aus-Optionen |
 
 Mit echten Daten geprüfte Hardware: **Shelly Pro 3EM**, **Shelly Pro 4PM**,
 **Shelly Pro 3**, **Shelly Plus 2PM**, **Shelly Plus Plug S** und der **Gen1
