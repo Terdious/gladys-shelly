@@ -1,0 +1,109 @@
+# -----------------------------------------------------------------------------
+# Publish the GitHub Release of every `vX.Y.Z` tag that has none yet.
+#
+# The Gladys Supervision page links the installed version to
+# `<repo>/releases?q=X.Y.Z OR vX.Y.Z`: a tag without a Release shows an empty
+# page there.
+#
+# Triggers:
+#   - called by the Release workflow, once the image of the new tag is pushed;
+#   - a `vX.Y.Z` tag pushed by hand;
+#   - a manual run (workflow_dispatch), e.g. to back-fill the versions tagged
+#     before this workflow existed. Tick "refresh" to also rewrite the notes
+#     of the Releases that already exist.
+# Idempotent: it only creates the missing Releases, oldest first.
+#
+# The notes are, in this order:
+#   1. the version's section of CHANGELOG.md, read from the tag itself, one
+#      line per bullet (the file is wrapped at 80 columns, a Release renders
+#      every newline as a line break);
+#   2. the notes GitHub generates for the tag: "What's Changed" (the merged
+#      pull requests and their authors, which also fills the Contributors
+#      block) and the "Full Changelog" comparison with the previous version.
+# A tag without CHANGELOG.md (tagged before it existed) gets the generated
+# part only.
+# -----------------------------------------------------------------------------
+name: GitHub releases
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      refresh:
+        description: 'Also rewrite the notes of the Releases that already exist'
+        type: boolean
+        default: false
+  workflow_call:
+
+jobs:
+  releases:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the Releases
+    # One run at a time, so two runs never create the same Release.
+    concurrency:
+      group: github-releases
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # every tag, to read its CHANGELOG.md
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Create the missing Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REFRESH: ${{ inputs.refresh == true }}
+        run: |
+          set -euo pipefail
+
+          existing="$(gh release list --limit 1000 --json tagName --jq '.[].tagName')"
+          tags="$(git tag --list --sort=v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)"
+          latest="$(tail -n1 <<<"$tags")"
+          previous=""
+
+          for tag in $tags; do
+            exists=false
+            if grep -qxF "$tag" <<<"$existing"; then exists=true; fi
+            if [ "$exists" = true ] && [ "$REFRESH" != true ]; then
+              previous="$tag"
+              continue
+            fi
+
+            # 1. The version's CHANGELOG.md section. Only a tag without
+            # CHANGELOG.md (tagged before it existed) has none: any other git
+            # error fails the run.
+            notes="${RUNNER_TEMP}/notes-${tag}.md"
+            : >"$notes"
+            if git cat-file -e "${tag}:CHANGELOG.md" 2>/dev/null; then
+              git show "${tag}:CHANGELOG.md" |
+                node .github/scripts/release.mjs notes "${tag#v}" >"$notes"
+            fi
+
+            # 2. What GitHub generates for the tag: merged pull requests and
+            # the comparison with the previous version.
+            generated="$(gh api -X POST "repos/${GH_REPO}/releases/generate-notes" \
+              -f tag_name="$tag" ${previous:+-f previous_tag_name="$previous"} --jq '.body')"
+            if [ -s "$notes" ]; then printf '\n\n' >>"$notes"; fi
+            printf '%s\n' "$generated" >>"$notes"
+
+            if [ "$exists" = true ]; then
+              gh release edit "$tag" --notes-file "$notes"
+              echo "Refreshed the notes of the release $tag"
+            else
+              # Back-filling oldest first must not mark an old version as latest.
+              is_latest=false
+              if [ "$tag" = "$latest" ]; then is_latest=true; fi
+              gh release create "$tag" --verify-tag --title "$tag" --notes-file "$notes" --latest="$is_latest"
+              echo "Created the release $tag"
+            fi
+            previous="$tag"
+          done
