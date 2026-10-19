@@ -18,10 +18,13 @@ import {
 import { featureName } from './featureNames.js';
 import { buildFeatureSpecs, toGladysFeature } from './features.js';
 import { buildDeviceSelector } from './selector.js';
+import { mergeVirtualMetadata } from './virtualComponents.js';
 
 /**
  * Friendly name of a device, in decreasing order of usefulness: the name the
- * user set in the Shelly app, then the commercial model name, then the raw
+ * user set in the Shelly app, then the commercial model name, then the product
+ * name a "Powered by Shelly" device signs into its identity (`jwt.n`, e.g.
+ * "Starlight Thermostat ST1820" for a model id of "S3XT-0S"), then the raw
  * model id, then the Shelly id (always present).
  * @param {object} params naming inputs
  * @param {object} params.info the `/shelly` identity payload
@@ -33,7 +36,8 @@ export function buildDeviceName({ info, config }) {
   if (typeof userName === 'string' && userName.trim() !== '') {
     return userName.trim();
   }
-  return MODEL_NAMES[info?.model] || info?.model || info?.id || 'Shelly';
+  const productName = typeof info?.jwt?.n === 'string' ? info.jwt.n.trim() : '';
+  return MODEL_NAMES[info?.model] || productName || info?.model || info?.id || 'Shelly';
 }
 
 /**
@@ -50,6 +54,12 @@ export function buildDeviceName({ info, config }) {
  * @returns {string} the feature name
  */
 function buildFeatureName(spec, config, channelCount, language) {
+  if (spec.ownName) {
+    // A virtual component already carries the name its device gave it
+    // ("Target temperature", "Child lock"): prefixing it with itself, or with
+    // "(number 202)", would only make it worse.
+    return spec.name;
+  }
   const name = featureName(spec, language);
   const componentConfig = config?.[spec.componentKey];
   const channelName =
@@ -77,10 +87,12 @@ function buildFeatureName(spec, config, channelCount, language) {
  * @param {string} [params.host] IP address or hostname the device answered on
  * @param {object} params.externalIds external id factory of this device
  * @param {string} [params.language] language of the feature names (en, fr, de, es)
+ * @param {Record<string, object>} [params.components] virtual-component metadata
+ *   (`Shelly.GetComponents`), for the devices that have any
  * @returns {object} the Gladys device
  */
-export function buildDevice({ info, status, config, host, externalIds, language }) {
-  const specs = buildFeatureSpecs(status);
+export function buildDevice({ info, status, config, host, externalIds, language, components }) {
+  const specs = buildFeatureSpecs(status, mergeVirtualMetadata(status, components, config));
 
   // Count the channels per component family so single-channel devices keep
   // unsuffixed feature names.

@@ -196,26 +196,29 @@ un Encendido/Apagado, un Pro 1PM también potencia, tensión, corriente y energ�
 — y un Shelly publicado después de esta versión funciona si habla el mismo
 vocabulario.
 
-| Componente Shelly             | Lo que obtiene en Gladys                                                                                                               |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `switch:N`                    | Encendido/Apagado (controlable), potencia (W), tensión (V), corriente (A), energía total (kWh), temperatura interna (°C)               |
-| `cover:N`                     | Persiana abrir / parar / cerrar (controlable), posición (%) una vez calibrada, potencia, tensión, corriente, energía                   |
-| `light:N`                     | Luz encendido/apagado y brillo (controlables), potencia y energía                                                                      |
-| `rgb:N` / `rgbw:N`            | Como `light:N`, más el color (controlable)                                                                                             |
-| `cct:N`                       | Como `light:N`, más la temperatura de color (controlable)                                                                              |
-| `input:N`                     | Modo interruptor: una entrada (encendido/apagado). Modo botón: un botón y el disparador «Botón pulsado». Modo conteo: un contador      |
-| `em:N` (trifásico)            | Por fase L1/L2/L3: potencia activa (W), potencia aparente (VA), tensión (V), corriente (A) — más los totales y la corriente del neutro |
-| `emdata:N`                    | Energía total y devuelta, por fase y total (kWh)                                                                                       |
-| `em1:N` / `em1data:N`         | Equivalentes monofásicos (Shelly Pro EM, 1PM Mini Gen3)                                                                                |
-| `pm1:N`                       | Potencia, tensión, corriente y energía de un medidor independiente (PM Mini)                                                           |
-| `temperature:N`, `humidity:N` | Temperatura (°C), humedad (%)                                                                                                          |
-| `devicepower:N`               | Nivel de batería (%)                                                                                                                   |
+| Componente Shelly             | Lo que obtiene en Gladys                                                                                                                                                                                                     |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `switch:N`                    | Encendido/Apagado (controlable), potencia (W), tensión (V), corriente (A), energía total (kWh), temperatura interna (°C)                                                                                                     |
+| `cover:N`                     | Persiana abrir / parar / cerrar (controlable), posición (%) una vez calibrada, potencia, tensión, corriente, energía                                                                                                         |
+| `light:N`                     | Luz encendido/apagado y brillo (controlables), potencia y energía                                                                                                                                                            |
+| `rgb:N` / `rgbw:N`            | Como `light:N`, más el color (controlable)                                                                                                                                                                                   |
+| `cct:N`                       | Como `light:N`, más la temperatura de color (controlable)                                                                                                                                                                    |
+| `input:N`                     | Modo interruptor: una entrada (encendido/apagado). Modo botón: un botón y el disparador «Botón pulsado». Modo conteo: un contador                                                                                            |
+| `em:N` (trifásico)            | Por fase L1/L2/L3: potencia activa (W), potencia aparente (VA), tensión (V), corriente (A) — más los totales y la corriente del neutro                                                                                       |
+| `emdata:N`                    | Energía total y devuelta, por fase y total (kWh)                                                                                                                                                                             |
+| `em1:N` / `em1data:N`         | Equivalentes monofásicos (Shelly Pro EM, 1PM Mini Gen3)                                                                                                                                                                      |
+| `pm1:N`                       | Potencia, tensión, corriente y energía de un medidor independiente (PM Mini)                                                                                                                                                 |
+| `temperature:N`, `humidity:N` | Temperatura (°C), humedad (%)                                                                                                                                                                                                |
+| `devicepower:N`               | Nivel de batería (%)                                                                                                                                                                                                         |
+| `number:N` / `boolean:N`      | Componentes virtuales de los dispositivos «Powered by Shelly» (LinkedGo ST1820…): consigna del termostato (controlable, limitada al rango y paso del dispositivo), temperatura (°C), humedad (%), opciones encendido/apagado |
 
 Hardware validado con datos reales: **Shelly Pro 3EM**, **Shelly Pro 4PM**,
 **Shelly Pro 3**, **Shelly Plus 2PM**, **Shelly Plus Plug S** y el **3EM Gen1**.
 Las persianas, luces y entradas siguen la API Shelly documentada y esperan sus
 comentarios con hardware real: si tiene alguno, cuéntenos cómo se comporta (ver
 [Diagnóstico](#diagnóstico)).
+
+Los componentes virtuales se nombran y tipifican según la descripción que el dispositivo da de sí mismo (`Shelly.GetComponents`, leída en cada escaneo): el rol declarado, si no el nombre, la unidad y el acceso. Los componentes `enum:N` aún no se gestionan. Controlar un componente virtual requiere la red local o MQTT — la Shelly Cloud no puede retransmitirlo.
 
 En **Gen1** se aplica el mismo modelo: un Shelly 2.5 en modo persiana se
 convierte en persiana, un Dimmer, una Bulb o un Duo en luz, un RGBW2 en modo
