@@ -16,7 +16,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@gladysassistant/integration-sdk": "^0.15.0",
+    "@gladysassistant/integration-sdk": "^0.16.0",
     "mqtt": "^5.16.1",
     "ws": "^8.22.0"
   },
